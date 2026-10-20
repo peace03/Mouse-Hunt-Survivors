@@ -1,0 +1,5 @@
+# 로컬 실행 증거와 기존 대용량 산출물
+/Archive/
+/Runs/
+/Tasks/
+__pycache__/

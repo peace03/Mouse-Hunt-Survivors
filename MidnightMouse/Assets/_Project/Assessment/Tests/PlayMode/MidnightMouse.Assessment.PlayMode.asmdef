@@ -1,0 +1,7 @@
+{
+  "name": "MidnightMouse.Assessment.PlayMode",
+  "rootNamespace": "MidnightMouse.Tests",
+  "references": ["MidnightMouse.Assessment", "Unity.InputSystem", "Unity.InputSystem.TestFramework", "UnityEngine.UI", "Unity.TextMeshPro"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

@@ -1,0 +1,5 @@
+Noto Sans KR Regular (static OTF, unmodified)
+Source: https://github.com/notofonts/noto-cjk/blob/main/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf
+License: SIL Open Font License 1.1 (OFL.txt)
+Downloaded: 2026-10-20
+게임 UI의 가독성을 위해 기본 weight 100인 variable TTF 대신 정적 Regular 원본을 사용합니다.
