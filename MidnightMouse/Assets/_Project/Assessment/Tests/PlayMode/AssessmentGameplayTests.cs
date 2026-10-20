@@ -299,6 +299,142 @@ namespace MidnightMouse.Tests
             Assert.That(_game.Elapsed, Is.Zero);
         }
 
+        /// <summary>제목의 설정·종료 창이 Enter와 Esc를 먼저 받아 뒤쪽 게임을 시작하지 않는지 확인한다.</summary>
+        [UnityTest]
+        public IEnumerator MenuOverlaysConsumeEnterAndEscape()
+        {
+            MenuButton("TitleSettingsButton").onClick.Invoke();
+            Assert.That(GameObject.Find("SettingsScreen"), Is.Not.Null);
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.Enter));
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+            yield return null;
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Title));
+            Assert.That(GameObject.Find("SettingsScreen"), Is.Not.Null, "음량 선택 중 Enter로 게임을 시작하지 않음");
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.Escape));
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+            yield return null;
+            Assert.That(GameObject.Find("SettingsScreen"), Is.Null);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Title));
+            Assert.That(EventSystem.current.currentSelectedGameObject.name, Is.EqualTo("TitleSettingsButton"));
+
+            MenuButton("TitleQuitButton").onClick.Invoke();
+            Assert.That(GameObject.Find("QuitScreen"), Is.Not.Null);
+            Assert.That(EventSystem.current.currentSelectedGameObject.name, Is.EqualTo("CancelQuitButton"));
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.Enter));
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+            yield return null;
+            Assert.That(GameObject.Find("QuitScreen"), Is.Null, "종료 확인의 기본 선택은 취소");
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Title));
+            MenuButton("TitleQuitButton").onClick.Invoke();
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.Escape));
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+            yield return null;
+            Assert.That(GameObject.Find("QuitScreen"), Is.Null);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Title));
+        }
+
+        /// <summary>일시정지의 설정·종료 취소가 시간을 재개하지 않으며 설정이 새 씬에서도 복원되는지 확인한다.</summary>
+        [UnityTest]
+        public IEnumerator SettingsPersistAndModalEscapeKeepsGamePaused()
+        {
+            const string volumeKey = "MidnightMouse.Settings.Volume.v1";
+            const string screenKey = "MidnightMouse.Settings.FullScreen.v1";
+            bool hadVolume = PlayerPrefs.HasKey(volumeKey), hadScreen = PlayerPrefs.HasKey(screenKey);
+            float savedVolume = PlayerPrefs.GetFloat(volumeKey), originalVolume = AudioListener.volume;
+            int savedScreen = PlayerPrefs.GetInt(screenKey);
+            FullScreenMode originalMode = Screen.fullScreenMode;
+            try
+            {
+                _game.StartRun();
+                _game.TogglePause();
+                yield return new WaitForSecondsRealtime(0.2f);
+                MenuButton("PauseSettingsButton").onClick.Invoke();
+                Assert.That(GameObject.Find("PauseButton").GetComponent<UnityEngine.UI.Button>().IsInteractable(), Is.False,
+                    "설정 뒤 HUD의 일시정지 버튼도 키보드 탐색 대상에서 제외");
+                var volume = GameObject.Find("VolumeSlider").GetComponent<UnityEngine.UI.Slider>();
+                volume.value = 23f;
+                MenuButton("WindowedButton").onClick.Invoke();
+                Assert.That(AudioListener.volume, Is.EqualTo(0.23f).Within(0.001f));
+                float pausedTime = _game.Elapsed;
+                Vector3 pausedPosition = _game.Player.transform.position;
+                InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.W, Key.Escape));
+                yield return null;
+                InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+                yield return new WaitForSecondsRealtime(0.2f);
+                Assert.That(GameObject.Find("SettingsScreen"), Is.Null);
+                Assert.That(_game.Phase, Is.EqualTo(GamePhase.Paused));
+                Assert.That(_game.Elapsed, Is.EqualTo(pausedTime));
+                Assert.That(Vector3.Distance(pausedPosition, _game.Player.transform.position), Is.LessThan(0.001f));
+                Assert.That(PlayerPrefs.GetFloat(volumeKey), Is.EqualTo(0.23f).Within(0.001f));
+                Assert.That(PlayerPrefs.GetInt(screenKey), Is.Zero);
+
+                MenuButton("PauseQuitButton").onClick.Invoke();
+                MenuButton("CancelQuitButton").onClick.Invoke();
+                Assert.That(_game.Phase, Is.EqualTo(GamePhase.Paused));
+                Assert.That(_game.Elapsed, Is.EqualTo(pausedTime));
+                MenuButton("ContinueButton").onClick.Invoke();
+                yield return null;
+                Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
+
+                AudioListener.volume = 1f;
+                yield return SceneManager.LoadSceneAsync(ScenePath);
+                yield return null;
+                _game = Object.FindFirstObjectByType<GameController>();
+                Assert.That(AudioListener.volume, Is.EqualTo(0.23f).Within(0.001f));
+                MenuButton("TitleSettingsButton").onClick.Invoke();
+                Assert.That(GameObject.Find("VolumeSlider").GetComponent<UnityEngine.UI.Slider>().value, Is.EqualTo(23f));
+                Assert.That(GameObject.Find("DisplayModeValue").GetComponent<TMPro.TMP_Text>().text, Does.Contain("창 모드"));
+                MenuButton("CloseSettingsButton").onClick.Invoke();
+                PlayerPrefs.SetFloat(volumeKey, float.NaN);
+                yield return SceneManager.LoadSceneAsync(ScenePath);
+                yield return null;
+                _game = Object.FindFirstObjectByType<GameController>();
+                Assert.That(AudioListener.volume, Is.EqualTo(1f), "손상된 저장 음량에는 기본값 적용");
+            }
+            finally
+            {
+                // 게임 설정 두 키만 되돌려 다른 사용자 저장 데이터를 건드리지 않는다.
+                if (hadVolume) PlayerPrefs.SetFloat(volumeKey, savedVolume); else PlayerPrefs.DeleteKey(volumeKey);
+                if (hadScreen) PlayerPrefs.SetInt(screenKey, savedScreen); else PlayerPrefs.DeleteKey(screenKey);
+                PlayerPrefs.Save();
+                AudioListener.volume = originalVolume;
+                Screen.fullScreenMode = originalMode;
+            }
+        }
+
+        /// <summary>화면 갱신 전에 도착한 이전 메뉴 클릭이 진행 중 게임 위에 창을 열지 않는지 확인한다.</summary>
+        [UnityTest]
+        public IEnumerator StaleTitleCallbacksCannotOpenMenusDuringPlay()
+        {
+            var settings = MenuButton("TitleSettingsButton");
+            var quit = MenuButton("TitleQuitButton");
+            var help = MenuButton("HelpButton");
+            _game.StartRun();
+            settings.onClick.Invoke();
+            quit.onClick.Invoke();
+            help.onClick.Invoke();
+            Assert.That(GameObject.Find("SettingsScreen"), Is.Null);
+            Assert.That(GameObject.Find("QuitScreen"), Is.Null);
+            Assert.That(GameObject.Find("HelpScreen"), Is.Null);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
+            yield return null;
+        }
+
+        /// <summary>현재 표시된 실제 메뉴 버튼을 통해 연결된 UI 동작을 검사한다.</summary>
+        private static UnityEngine.UI.Button MenuButton(string name)
+        {
+            GameObject target = GameObject.Find(name);
+            Assert.That(target, Is.Not.Null, "표시된 메뉴 버튼: " + name);
+            var button = target.GetComponent<UnityEngine.UI.Button>();
+            Assert.That(button, Is.Not.Null);
+            Assert.That(button.IsInteractable(), Is.True);
+            return button;
+        }
+
         /// <summary>충돌 이동을 시험하는 대신 상호작용 시작 위치를 준비한다.</summary>
         private void MovePlayerFixture(Vector3 position)
         {

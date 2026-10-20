@@ -61,6 +61,7 @@ namespace MidnightMouse
         public Camera WorldCamera => _worldCamera;
         public IReadOnlyList<CatController> Cats => _cats;
         public IReadOnlyList<TrapController> Traps => _traps;
+        public Key PauseKey => _pauseKey;
 
         /// <summary>씬 연결을 검증하고 한 번만 규칙·오디오·개체 풀을 준비한다.</summary>
         private void Awake()
@@ -100,7 +101,6 @@ namespace MidnightMouse
         {
             if (!_initialized) return;
             Keyboard keyboard = Keyboard.current;
-            if (keyboard != null && keyboard[_pauseKey].wasPressedThisFrame) TogglePause();
             if (Phase != GamePhase.Playing) { SyncPhase(); return; }
             float delta = Time.deltaTime;
             Vector2 movement = Vector2.zero;

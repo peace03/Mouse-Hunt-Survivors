@@ -22,7 +22,7 @@ namespace MidnightMouse
         private TMP_FontAsset _fontAsset;
         private Sprite _flatSprite;
         private RectTransform _canvas;
-        private GameObject _title, _hud, _pause, _upgrade, _result, _help;
+        private GameObject _title, _hud, _pause, _upgrade, _result, _help, _settings, _quit;
         private TMP_Text _hearts, _clock, _phaseLabel, _score, _level, _hint, _cooldowns;
         private TMP_Text _resultTitle, _resultBody;
         private UnityEngine.UI.Image _experience, _dawn;
@@ -33,6 +33,13 @@ namespace MidnightMouse
         private GamePhase _shownPhase = (GamePhase)(-1);
         private int _shownLevel = -1;
         private float _upgradeUnlockTime;
+        private UnityEngine.UI.Slider _volumeSlider;
+        private TMP_Text _volumeValue, _displayModeValue;
+        private UnityEngine.UI.Button _cancelQuitButton;
+        private GameObject _overlayReturnFocus;
+
+        private bool HasOverlay => (_help != null && _help.activeSelf)
+            || (_settings != null && _settings.activeSelf) || (_quit != null && _quit.activeSelf);
 
         /// <summary>필수 참조를 확인하고 게임 상태와 독립적인 표시물을 한 번만 만든다.</summary>
         private void Start()
@@ -55,6 +62,9 @@ namespace MidnightMouse
             BuildUpgrades();
             BuildResult();
             BuildHelp();
+            GameSettings.Load();
+            BuildSettings();
+            BuildQuit();
             Refresh();
             StartCoroutine(RefreshLoop());
         }
@@ -64,8 +74,17 @@ namespace MidnightMouse
         {
             var keyboard = Keyboard.current;
             if (keyboard == null || _game == null) return;
-            if (_game.Phase == GamePhase.Title && keyboard.enterKey.wasPressedThisFrame)
-                _game.StartRun();
+            // Esc는 가장 위의 창 하나만 닫아 설정 취소와 게임 재개가 겹치지 않게 한다.
+            if (keyboard[_game.PauseKey].wasPressedThisFrame)
+            {
+                if (HasOverlay) CloseOverlay();
+                else _game.TogglePause();
+                return;
+            }
+            if (HasOverlay) return;
+            if (_game.Phase == GamePhase.Title && keyboard.enterKey.wasPressedThisFrame &&
+                (EventSystem.current == null || EventSystem.current.currentSelectedGameObject == _startButton.gameObject))
+                StartFromTitle();
             if (_game.Phase != GamePhase.Upgrade || Time.unscaledTime < _upgradeUnlockTime) return;
             if (keyboard.digit1Key.wasPressedThisFrame) ChooseUpgrade(0);
             else if (keyboard.digit2Key.wasPressedThisFrame) ChooseUpgrade(1);
@@ -97,7 +116,7 @@ namespace MidnightMouse
                 _pause.SetActive(phase == GamePhase.Paused);
                 _upgrade.SetActive(phase == GamePhase.Upgrade);
                 _result.SetActive(phase == GamePhase.Won || phase == GamePhase.Lost);
-                _help.SetActive(false);
+                CloseOverlay();
                 if (phase == GamePhase.Title) Focus(_startButton);
                 if (phase == GamePhase.Paused) Focus(_continueButton);
                 if (phase == GamePhase.Won || phase == GamePhase.Lost) Focus(_retryButton);
@@ -202,7 +221,7 @@ namespace MidnightMouse
         private void BuildTitle()
         {
             _title = Layer("TitleScreen", false);
-            var card = CenterPanel(_title.transform, "TitleCard", -438, 0, 600, 720, _ink);
+            var card = CenterPanel(_title.transform, "TitleCard", -438, 0, 600, 800, _ink);
             Label(card, "Edition", 42, 36, 510, 28, "MIDNIGHT MOUSE  /  ONE NIGHT", 17, _gold);
             Label(card, "Title", 36, 91, 530, 105, "한밤의 쥐", 72, _cream);
             Label(card, "Subtitle", 42, 207, 510, 40, "잠든 집을 지나, 아침까지.", 27, _cream);
@@ -211,20 +230,24 @@ namespace MidnightMouse
                 "작은 쥐 모찌의 밤 나들이.\n소리로 고양이를 유인하고, 집 안의 물건으로\n길을 열어 겨울을 위한 치즈를 모으세요.", 23, _muted);
             Label(card, "Goal", 42, 438, 510, 72,
                 "목표  ·  5분 동안 생존하기\n하트가 모두 사라지면 밤 나들이가 끝나요.", 21, _cream);
-            _startButton = Button(card, "StartButton", 42, 544, 508, 67, "밤을 시작하기    ENTER", _game.StartRun, true, 24);
-            Button(card, "HelpButton", 42, 627, 508, 44, "조작과 생존 요령", () => _help.SetActive(true), false, 20);
-            Label(card, "Credit", 42, 685, 510, 22, "윤평화  ·  Unity 프로토타입", 14, _muted);
+            _startButton = Button(card, "StartButton", 42, 544, 508, 67, "밤을 시작하기    ENTER", StartFromTitle, true, 24);
+            Button(card, "HelpButton", 42, 627, 508, 44, "조작과 생존 요령", () => OpenOverlay(_help, "HelpButton"), false, 20);
+            Button(card, "TitleSettingsButton", 42, 685, 246, 44, "설정", () => OpenSettings("TitleSettingsButton"), false, 20);
+            Button(card, "TitleQuitButton", 304, 685, 246, 44, "게임 종료", () => OpenQuit("TitleQuitButton"), false, 20);
+            Label(card, "Credit", 42, 755, 510, 22, "윤평화  ·  Unity 프로토타입", 14, _muted);
         }
 
-        /// <summary>일시정지 상태에서 계속하기와 제목 복귀를 제공한다.</summary>
+        /// <summary>일시정지 상태에서 계속하기·설정·제목 복귀·종료를 제공한다.</summary>
         private void BuildPause()
         {
             _pause = Layer("PauseScreen", true);
-            var card = CenterPanel(_pause.transform, "PauseCard", 0, 0, 610, 415, _ink);
+            var card = CenterPanel(_pause.transform, "PauseCard", 0, 0, 610, 570, _ink);
             Label(card, "PauseTitle", 36, 40, 538, 70, "잠깐 숨 고르기", 40, _cream, TextAlignmentOptions.Center);
             Label(card, "PauseBody", 36, 129, 538, 48, "집도, 고양이도 잠시 멈췄어요.", 23, _muted, TextAlignmentOptions.Center);
             _continueButton = Button(card, "ContinueButton", 60, 222, 490, 62, "다시 움직이기    ESC", _game.TogglePause, true, 23);
-            Button(card, "TitleButton", 60, 307, 490, 52, "제목으로", _game.ReturnToTitle, false, 21);
+            Button(card, "PauseSettingsButton", 60, 307, 490, 52, "설정", () => OpenSettings("PauseSettingsButton"), false, 21);
+            Button(card, "TitleButton", 60, 377, 490, 52, "제목으로", _game.ReturnToTitle, false, 21);
+            Button(card, "PauseQuitButton", 60, 447, 490, 52, "게임 종료", () => OpenQuit("PauseQuitButton"), false, 21);
         }
 
         /// <summary>세 개의 성장 카드를 만들고 오입력 방지 시간을 적용한다.</summary>
@@ -269,7 +292,135 @@ namespace MidnightMouse
                 "01   움직임이 소리가 됩니다\nWASD 이동 · Ctrl 조용히 · Shift 빠르게 · Space 대시\n발밑의 원이 커질수록 더 멀리 있는 고양이가 듣습니다.\n\n"
                 + "02   고양이를 원하는 자리로\n클릭하면 그곳에 미끼 치즈를 던집니다.\n노란 함정 지점 근처에서 E: 컵을 떨어뜨리거나 청소기를 출발!\n\n"
                 + "03   치즈를 모으며 아침을 기다려요\n치즈로 레벨을 올리고 성장 카드 한 장을 고르세요.\n5분 생존하면 승리. 하트 0이면 패배. Esc로 잠시 멈춥니다.", 23, _cream);
-            Button(card, "CloseHelpButton", 45, 588, 790, 58, "알겠어요", () => _help.SetActive(false), true, 23);
+            Button(card, "CloseHelpButton", 45, 588, 790, 58, "알겠어요", CloseOverlay, true, 23);
+        }
+
+        /// <summary>음량 슬라이더와 두 화면 모드를 기존 메뉴 스타일로 배치한다.</summary>
+        private void BuildSettings()
+        {
+            _settings = Layer("SettingsScreen", true);
+            var card = CenterPanel(_settings.transform, "SettingsCard", 0, 0, 740, 570, _ink);
+            Label(card, "SettingsTitle", 52, 34, 636, 62, "편안한 밤을 위한 설정", 36, _cream);
+            Label(card, "VolumeLabel", 52, 129, 410, 35, "전체 음량", 24, _cream);
+            _volumeValue = Label(card, "VolumeValue", 552, 129, 136, 35, "", 24, _gold, TextAlignmentOptions.Right);
+            var sliderRect = Panel(card, "VolumeSlider", 52, 183, 636, 48, Color.clear);
+            sliderRect.GetComponent<UnityEngine.UI.Image>().raycastTarget = true;
+            var track = Panel(sliderRect, "VolumeTrack", 12, 20, 612, 8, new Color(0.22f, 0.3f, 0.34f));
+            var fill = Panel(track, "VolumeFill", 0, 0, 612, 8, _gold);
+            fill.anchorMin = Vector2.zero; fill.anchorMax = Vector2.one;
+            fill.offsetMin = fill.offsetMax = Vector2.zero;
+            var handleArea = Panel(sliderRect, "VolumeHandleArea", 12, 0, 612, 48, Color.clear);
+            var handle = Panel(handleArea, "VolumeHandle", 0, 0, 24, 36, _cream);
+            handle.anchorMin = Vector2.zero; handle.anchorMax = Vector2.up;
+            handle.pivot = new Vector2(0.5f, 0.5f);
+            handle.sizeDelta = new Vector2(24, -12); handle.anchoredPosition = Vector2.zero;
+            _volumeSlider = sliderRect.gameObject.AddComponent<UnityEngine.UI.Slider>();
+            _volumeSlider.fillRect = fill;
+            _volumeSlider.handleRect = handle;
+            _volumeSlider.targetGraphic = handle.GetComponent<UnityEngine.UI.Image>();
+            _volumeSlider.minValue = 0f; _volumeSlider.maxValue = 100f; _volumeSlider.wholeNumbers = true;
+            _volumeSlider.SetValueWithoutNotify(Mathf.Round(GameSettings.Volume * 100f));
+            _volumeSlider.onValueChanged.AddListener(value =>
+            {
+                GameSettings.SetVolume(value / 100f);
+                _volumeValue.SetText("{0:0}%", value);
+            });
+            Label(card, "DisplayLabel", 52, 273, 280, 35, "화면 모드", 24, _cream);
+            _displayModeValue = Label(card, "DisplayModeValue", 332, 273, 356, 35, "", 22, _gold, TextAlignmentOptions.Right);
+            Button(card, "WindowedButton", 52, 326, 310, 56, "창 모드", () => SetDisplayMode(false), false, 22);
+            Button(card, "FullScreenButton", 378, 326, 310, 56, "전체 화면", () => SetDisplayMode(true), false, 22);
+            Label(card, "SettingsHint", 52, 407, 636, 55,
+                "변경 즉시 적용되며, 닫을 때 저장됩니다.\n음량: 마우스로 조절하거나 선택 후 ← → 키", 18, _muted);
+            Button(card, "CloseSettingsButton", 52, 481, 636, 55, "저장하고 돌아가기    ESC", CloseOverlay, true, 22);
+            _settings.SetActive(false);
+        }
+
+        /// <summary>실수로 진행 중인 판을 닫지 않도록 취소를 기본 선택으로 둔다.</summary>
+        private void BuildQuit()
+        {
+            _quit = Layer("QuitScreen", true);
+            var card = CenterPanel(_quit.transform, "QuitCard", 0, 0, 700, 375, _ink);
+            Label(card, "QuitTitle", 45, 39, 610, 65, "게임을 종료할까요?", 38, _cream, TextAlignmentOptions.Center);
+            Label(card, "QuitBody", 45, 132, 610, 70,
+                "현재 밤의 진행은 저장되지 않습니다.\n음량과 화면 설정은 유지됩니다.", 23, _muted, TextAlignmentOptions.Center);
+            _cancelQuitButton = Button(card, "CancelQuitButton", 45, 258, 295, 62, "계속 머무르기    ESC", CloseOverlay, true, 22);
+            Button(card, "ConfirmQuitButton", 360, 258, 295, 62, "게임 종료", QuitGame, false, 22);
+            _quit.SetActive(false);
+        }
+
+        /// <summary>제목의 시작 버튼과 Enter가 같은 프레임에 들어와도 한 번만 시작한다.</summary>
+        private void StartFromTitle()
+        {
+            if (!HasOverlay && _game.Phase == GamePhase.Title) _game.StartRun();
+        }
+
+        /// <summary>현재 저장 값을 표시하고 음량 슬라이더에 키보드 초점을 준다.</summary>
+        private void OpenSettings(string sourceButton)
+        {
+            if (!OpenOverlay(_settings, sourceButton)) return;
+            _volumeSlider.SetValueWithoutNotify(Mathf.Round(GameSettings.Volume * 100f));
+            _volumeValue.SetText("{0:0}%", _volumeSlider.value);
+            _displayModeValue.text = GameSettings.FullScreen ? "전체 화면 · 테두리 없음" : "창 모드";
+            EventSystem.current?.SetSelectedGameObject(_volumeSlider.gameObject);
+        }
+
+        /// <summary>선택한 화면 모드를 적용하고 현재 선택을 글로 표시한다.</summary>
+        private void SetDisplayMode(bool fullScreen)
+        {
+            GameSettings.SetFullScreen(fullScreen);
+            _displayModeValue.text = fullScreen ? "전체 화면 · 테두리 없음" : "창 모드";
+        }
+
+        /// <summary>종료 확인을 열되 기본 키보드 선택으로 취소를 지정한다.</summary>
+        private void OpenQuit(string sourceButton)
+        {
+            if (OpenOverlay(_quit, sourceButton)) Focus(_cancelQuitButton);
+        }
+
+        /// <summary>모달 뒤 메뉴의 포인터·키보드 선택을 차단하고 복귀 위치를 보관한다.</summary>
+        private bool OpenOverlay(GameObject overlay, string sourceButton)
+        {
+            if (HasOverlay || (_game.Phase != GamePhase.Title && _game.Phase != GamePhase.Paused)) return false;
+            _overlayReturnFocus = GameObject.Find(sourceButton);
+            _title.GetComponent<CanvasGroup>().interactable = false;
+            _pause.GetComponent<CanvasGroup>().interactable = false;
+            _hud.GetComponent<CanvasGroup>().interactable = false;
+            overlay.SetActive(true);
+            var first = overlay.GetComponentInChildren<UnityEngine.UI.Button>();
+            if (first != null) Focus(first);
+            return true;
+        }
+
+        /// <summary>위 창만 닫고 기존 메뉴의 조작과 키보드 초점을 복원한다.</summary>
+        private void CloseOverlay()
+        {
+            if (_settings != null && _settings.activeSelf) GameSettings.Save();
+            if (_settings != null) _settings.SetActive(false);
+            if (_quit != null) _quit.SetActive(false);
+            if (_help != null) _help.SetActive(false);
+            _title.GetComponent<CanvasGroup>().interactable = true;
+            _pause.GetComponent<CanvasGroup>().interactable = true;
+            _hud.GetComponent<CanvasGroup>().interactable = true;
+            if (_overlayReturnFocus != null && _overlayReturnFocus.activeInHierarchy)
+                EventSystem.current?.SetSelectedGameObject(_overlayReturnFocus);
+            _overlayReturnFocus = null;
+        }
+
+        /// <summary>설정을 저장하고 Player에서는 앱을, Editor에서는 Play Mode만 종료한다.</summary>
+        private void QuitGame()
+        {
+            GameSettings.Save();
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit(0);
+#endif
+        }
+
+        /// <summary>설정 창을 연 채 운영체제에서 종료한 경우에도 변경 값을 저장한다.</summary>
+        private void OnApplicationQuit()
+        {
+            if (_settings != null && _settings.activeSelf) GameSettings.Save();
         }
 
         /// <summary>성장 화면이 뜬 직후 눌려 있던 클릭이 선택으로 이어지는 것을 막는다.</summary>
@@ -289,7 +440,7 @@ namespace MidnightMouse
         /// <summary>화면 전체를 채우는 표시 계층을 만든다.</summary>
         private GameObject Layer(string name, bool dim)
         {
-            var rect = new GameObject(name, typeof(RectTransform)).GetComponent<RectTransform>();
+            var rect = new GameObject(name, typeof(RectTransform), typeof(CanvasGroup)).GetComponent<RectTransform>();
             rect.SetParent(_canvas, false);
             rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
             rect.offsetMin = rect.offsetMax = Vector2.zero;
