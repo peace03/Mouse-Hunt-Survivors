@@ -135,6 +135,7 @@ namespace MidnightMouse
                     _dashDirection = direction.sqrMagnitude > 0.01f ? direction.normalized : transform.forward;
                     _dashRemaining = _dashDuration;
                     _dashCooldownRemaining = _currentDashCooldown;
+                    _game.EmitNoise(transform.position, _runNoise * _noiseMultiplier);
                     _game.PlaySound(GameSound.Dash);
                 }
                 if (_dashRemaining > 0f)
@@ -158,6 +159,8 @@ namespace MidnightMouse
             NoiseRadius = moved > 0.001f && !knockingBack ? (IsDashing ? _runNoise : sneak ? _sneakNoise : run ? _runNoise : _walkNoise) * _noiseMultiplier : 0f;
             if (NoiseRadius > 0f && _noiseTimer <= 0f)
             {
+                // 소음 이벤트 때만 고양이를 검사해 프레임별 전수 감지를 피한다.
+                _game.EmitNoise(transform.position, NoiseRadius);
                 _noiseTimer = _noiseInterval;
                 if (!sneak) _game.PlaySound(GameSound.Footstep);
             }

@@ -13,6 +13,8 @@ namespace MidnightMouse
     {
         [SerializeField, Tooltip("이 스테이지가 공유할 생존·고양이·함정·성장 수치 에셋.")] private AssessmentRules _rules;
         [SerializeField, Tooltip("플레이어 루트의 MouseController.")] private MouseController _player;
+        [SerializeField, Tooltip("단계별로 활성화하고 재사용할 고양이 풀.")] private CatController[] _cats;
+        [SerializeField, Tooltip("NavMesh 위의 순찰·치즈 생성 지점.")] private Transform[] _patrolPoints;
         [SerializeField, Tooltip("이동 방향·미끼 조준에 사용할 게임 카메라.")] private Camera _worldCamera;
         [SerializeField, Tooltip("화면 위 방향 이동 키.")] private Key _upKey = Key.W;
         [SerializeField, Tooltip("화면 아래 방향 이동 키.")] private Key _downKey = Key.S;
@@ -25,7 +27,12 @@ namespace MidnightMouse
 
         private GameSession _session;
         private GameAudio _audio;
+        private CheeseBait[] _baits;
+        private RadiusRing _aimRing;
         private GamePhase _lastPhase;
+        private float _baitCooldown;
+        private float _reinforcementTimer;
+        private int _enteredCats;
         private bool _initialized;
 
         public GamePhase Phase => _session == null ? GamePhase.Title : _session.Phase;
@@ -41,14 +48,17 @@ namespace MidnightMouse
         public MouseController Player => _player;
         public string CurrentHint { get; private set; } = "치즈를 모으며 해가 뜰 때까지 살아남으세요.";
         public float DashCooldown01 => _player == null ? 0f : _player.DashCooldown01;
+        public float BaitCooldown01 => _rules == null ? 0f : Mathf.Clamp01(_baitCooldown / _rules.BaitCooldown);
         public bool IsPlayerInvulnerable => _session != null && _session.InvulnerabilityRemaining > 0f;
         public AssessmentRules Rules => _rules;
         public Camera WorldCamera => _worldCamera;
+        public IReadOnlyList<CatController> Cats => _cats;
 
         /// <summary>씬 연결을 검증하고 한 번만 규칙·오디오·개체 풀을 준비한다.</summary>
         private void Awake()
         {
-            if (_rules == null || _player == null || _worldCamera == null)
+            if (_rules == null || _player == null || _worldCamera == null || _cats == null ||
+                _patrolPoints == null || _patrolPoints.Length == 0)
             {
                 Debug.LogError("GameController: 규칙, 플레이어, 카메라, 개체 풀과 순찰 지점 연결을 확인해야 합니다.", this);
                 enabled = false;
@@ -58,6 +68,17 @@ namespace MidnightMouse
                 _rules.BaseExperience, _rules.ExperienceStep, _rules.HeartCap);
             _audio = GetComponent<GameAudio>();
             _player.Initialize(this, _worldCamera);
+            for (int index = 0; index < _cats.Length; index++) _cats[index].Initialize(this, _patrolPoints, index);
+            _baits = new CheeseBait[3];
+            for (int index = 0; index < _baits.Length; index++)
+            {
+                var baitObject = new GameObject("미끼 치즈 풀 " + index);
+                baitObject.transform.SetParent(transform, false);
+                _baits[index] = baitObject.AddComponent<CheeseBait>();
+                _baits[index].Initialize(this);
+            }
+            _aimRing = RadiusRing.Create(transform, "미끼 착지 조준", new Color(1f, 0.8f, 0.25f), 0.05f);
+            _aimRing.SetAppearance(0.32f, Color.yellow, false);
             _lastPhase = GamePhase.Title;
             _initialized = true;
             Cursor.visible = true;
@@ -83,8 +104,24 @@ namespace MidnightMouse
                 dash = keyboard[_dashKey].wasPressedThisFrame;
             }
             _player.Tick(delta, movement, sneak, run, dash);
+            _baitCooldown = Mathf.Max(0f, _baitCooldown - delta);
+            bool hasAim = TryGetCursorAim(out Vector3 aim);
+            _aimRing.transform.position = aim + Vector3.up * 0.075f;
+            _aimRing.SetAppearance(0.32f, _baitCooldown <= 0f ? new Color(1f, 0.8f, 0.25f) : new Color(0.35f, 0.4f, 0.47f), hasAim);
+            if (hasAim && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame &&
+                (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())) TryThrowBait(aim);
+            foreach (CheeseBait bait in _baits) bait.Tick(delta);
+            foreach (CatController cat in _cats)
+            {
+                if (Phase != GamePhase.Playing) break;
+                cat.Tick(delta);
+            }
             // 같은 프레임의 마지막 피격을 먼저 반영해 패배가 생존 승리로 덮이지 않게 한다.
             _session.Tick(delta);
+            if (Phase == GamePhase.Playing)
+            {
+                UpdatePopulation(delta);
+            }
             SyncPhase();
         }
 
@@ -94,6 +131,11 @@ namespace MidnightMouse
             if (!_initialized) return;
             _session.Start();
             _player.ResetRun();
+            _baitCooldown = _reinforcementTimer = 0f;
+            _enteredCats = Mathf.Min(_rules.GetCatCount(0f), _cats.Length);
+            foreach (CheeseBait bait in _baits) bait.ResetRun();
+            for (int index = 0; index < _cats.Length; index++) _cats[index].SetAvailable(index < _enteredCats);
+            CurrentHint = "달리면 빨라지지만 고양이가 소음을 듣습니다. 함정의 노란 원에서 E.";
             SyncPhase();
         }
 
@@ -152,6 +194,21 @@ namespace MidnightMouse
             }
         }
 
+        /// <summary>바닥 NavMesh로 보정한 사거리 안 지점에 사용 가능한 미끼를 던진다.</summary>
+        public bool TryThrowBait(Vector3 groundPoint)
+        {
+            if (Phase != GamePhase.Playing || _baitCooldown > 0f || !TryClampAim(groundPoint, out Vector3 target)) return false;
+            foreach (CheeseBait bait in _baits)
+            {
+                if (bait.gameObject.activeSelf) continue;
+                bait.Launch(_player.transform.position, target);
+                _baitCooldown = _rules.BaitCooldown;
+                PlaySound(GameSound.Dash);
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>진행 중 유효한 피격만 체력·반동·효과음으로 반영한다.</summary>
         public bool TryDamagePlayer(Vector3 source)
         {
@@ -162,10 +219,59 @@ namespace MidnightMouse
             return true;
         }
 
+        /// <summary>실제 소음 이벤트 때만 고양이 풀에 감지 여부를 전달한다.</summary>
+        public void EmitNoise(Vector3 point, float radius, CheeseBait bait = null)
+        {
+            if (Phase != GamePhase.Playing || radius <= 0f) return;
+            foreach (CatController cat in _cats) cat.ReceiveNoise(point, radius, bait);
+        }
+
         /// <summary>미리 생성한 효과음을 재생한다.</summary>
         public void PlaySound(GameSound sound)
         {
             if (_audio != null) _audio.Play(sound);
+        }
+
+        /// <summary>단계별 증원과 부스러기 생성 주기를 진행한다.</summary>
+        private void UpdatePopulation(float delta)
+        {
+            _reinforcementTimer = Mathf.Max(0f, _reinforcementTimer - delta);
+            int desired = Mathf.Min(_rules.GetCatCount(Elapsed), _cats.Length);
+            if (_enteredCats < desired && _reinforcementTimer <= 0f)
+            {
+                _cats[_enteredCats++].SetAvailable(true);
+                _reinforcementTimer = _rules.ReinforcementInterval;
+                PlaySound(GameSound.Alert);
+            }
+        }
+
+        /// <summary>커서 광선을 바닥 평면에 투영해 적법한 미끼 위치로 보정한다.</summary>
+        private bool TryGetCursorAim(out Vector3 target)
+        {
+            target = _player.transform.position;
+            if (Mouse.current == null) return false;
+            Ray ray = _worldCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+            var floor = new Plane(Vector3.up, Vector3.zero);
+            if (!floor.Raycast(ray, out float distance)) return false;
+            return TryClampAim(ray.GetPoint(distance), out target);
+        }
+
+        /// <summary>잘못된 좌표와 바닥 밖 지점을 거부하고 최대 사거리를 지킨다.</summary>
+        private bool TryClampAim(Vector3 point, out Vector3 target)
+        {
+            target = _player.transform.position;
+            if (float.IsNaN(point.x) || float.IsNaN(point.y) || float.IsNaN(point.z) ||
+                float.IsInfinity(point.x) || float.IsInfinity(point.y) || float.IsInfinity(point.z)) return false;
+            Vector3 difference = point - _player.transform.position;
+            difference.y = 0f;
+            point = _player.transform.position + Vector3.ClampMagnitude(difference, _rules.BaitRange);
+            point.y = 0f;
+            if (!NavMesh.SamplePosition(point, out NavMeshHit hit, 0.6f, NavMesh.AllAreas)) return false;
+            Vector3 toHit = hit.position - _player.transform.position;
+            toHit.y = 0f;
+            if (toHit.sqrMagnitude > _rules.BaitRange * _rules.BaitRange + 0.01f) return false;
+            target = hit.position;
+            return true;
         }
 
         /// <summary>세션 상태 전이를 실제 AI 정지·조준 표시·효과음에 반영한다.</summary>
@@ -174,7 +280,9 @@ namespace MidnightMouse
             if (_lastPhase == Phase) return;
             _lastPhase = Phase;
             bool running = Phase == GamePhase.Playing;
+            foreach (CatController cat in _cats) cat.SetSimulation(running);
             _player.SetSimulation(running);
+            if (!running) _aimRing.SetAppearance(0.32f, Color.yellow, false);
             if (Phase == GamePhase.Won) PlaySound(GameSound.Win);
             else if (Phase == GamePhase.Lost) PlaySound(GameSound.Lose);
         }
