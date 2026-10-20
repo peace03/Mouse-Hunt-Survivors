@@ -210,6 +210,34 @@ namespace MidnightMouse
             MoveTo(_target, _rules.InvestigateSpeed);
         }
 
+        /// <summary>유효한 함정 피해를 적용하고 기절 또는 치즈를 남기는 퇴장으로 전환한다.</summary>
+        public bool ApplyTrapHit(int damage, float stun, Vector3 pushDirection, float pushDistance = 0f)
+        {
+            if (_game.Phase != GamePhase.Playing || !CanReceiveHit || damage <= 0) return false;
+            Health = Mathf.Max(0, Health - damage);
+            _bait = null;
+            if (Health == 0)
+            {
+                _game.CatBanished(transform.position, _rules.CatHearts);
+                SetState(CatState.Retreat);
+                _stateTimer = 8f;
+                _destinationTimer = 0f;
+                MoveTo(_spawnPosition, _rules.RetreatSpeed);
+            }
+            else
+            {
+                SetState(CatState.Stunned);
+                _stateTimer = Mathf.Max(0.1f, stun);
+                if (pushDistance > 0f)
+                {
+                    Vector3 goal = transform.position + Vector3.ProjectOnPlane(pushDirection, Vector3.up).normalized * pushDistance;
+                    if (_agent.Raycast(goal, out NavMeshHit obstacle)) goal = obstacle.position;
+                    if (NavMesh.SamplePosition(goal, out NavMeshHit hit, 0.5f, NavMesh.AllAreas)) _agent.Warp(hit.position);
+                }
+            }
+            return true;
+        }
+
         /// <summary>게임 상태와 일치하도록 경로 이동을 멈추거나 재개한다.</summary>
         public void SetSimulation(bool running)
         {
