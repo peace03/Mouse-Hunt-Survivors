@@ -1,0 +1,6 @@
+{
+  "name": "MidnightMouse.Assessment",
+  "rootNamespace": "MidnightMouse",
+  "references": ["Unity.InputSystem", "UnityEngine.UI", "Unity.TextMeshPro"],
+  "autoReferenced": true
+}

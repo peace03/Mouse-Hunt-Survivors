@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fe14dee5c1621b46a5dca2afa361b6f, type: 3}
+  m_Name: AssessmentRules
+  m_EditorClassIdentifier: MidnightMouse.Assessment::MidnightMouse.AssessmentRules
+  _duration: 300
+  _startingHearts: 3
+  _heartCap: 5
+  _invulnerability: 1.5
+  _baseExperience: 4
+  _experienceStep: 2
+  _stageDuration: 60
+  _catsPerStage: 0200000003000000040000000600000007000000i
+  _reinforcementInterval: 3
+  _catHearts: 3
+  _patrolSpeed: 2.5
+  _investigateSpeed: 3.5
+  _chaseSpeed: 4.5
+  _retreatSpeed: 7
+  _hearingMultiplier: 1.3
+  _detectRadius: 2
+  _loseDistance: 6
+  _loseTime: 4
+  _investigateWait: 2
+  _catchRadius: 0.8
+  _catchRest: 1
+  _respawnDelay: 20
+  _interactionRadius: 1.2
+  _trapPreviewDistance: 4
+  _cupDelay: 0.5
+  _cupRadius: 3
+  _cupDamage: 2
+  _cupStun: 4
+  _cupCooldown: 20
+  _vacuumDuration: 8
+  _vacuumSpeed: 3
+  _vacuumRadius: 1.1
+  _vacuumDamage: 2
+  _vacuumPush: 2
+  _vacuumStun: 2
+  _vacuumCooldown: 25
+  _cheeseInterval: 6
+  _maxCrumbs: 10
+  _initialCrumbs: 6
+  _pickupRadius: 1.5
+  _bigCheeseLifetime: 15
+  _baitRange: 8
+  _baitCooldown: 5
+  _baitFlightTime: 0.5
+  _baitNoiseRadius: 6
+  _baitEatTime: 3
+  _baitLifetime: 10
+  _noiseUpgrade: 0.1
+  _minimumNoise: 0.4
+  _dashUpgrade: 0.7
+  _minimumDashCooldown: 1

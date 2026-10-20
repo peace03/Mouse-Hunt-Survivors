@@ -1,0 +1,8 @@
+{
+  "name": "MidnightMouse.Assessment.EditMode",
+  "rootNamespace": "MidnightMouse.Tests",
+  "references": ["MidnightMouse.Assessment"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}
