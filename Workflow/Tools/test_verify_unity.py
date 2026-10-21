@@ -1,10 +1,16 @@
 """검증기가 잘못된 증거를 성공으로 처리하지 않는지 확인한다."""
 import copy
+import contextlib
+import io
 import json
+import os
 import shutil
+import sys
+import time
 import uuid
 import unittest
 from pathlib import Path
+from unittest import mock
 
 try:
     import verify_unity as verify
@@ -123,6 +129,97 @@ class VerificationTests(unittest.TestCase):
         path.write_text('{"example_only":true,"example_only":false}', encoding="utf-8")
         with self.assertRaises(verify.InvalidEvidence):
             verify.load(path)
+
+    def test_failed_run_cleans_work_files_without_erasing_failure_evidence(self):
+        task = self.root / "Workflow/Tasks/cleanup-test"
+        baseline = {"schema_version": "1.0", "git_oid": "a" * 40, "files": {}}
+        verify.save(task / "baseline.json", baseline)
+        contract = verify.load(Path(__file__).resolve().parents[1] / "Templates/작업계약.json")
+        contract.update(example_only=False, contract_id="cleanup-test", base_oid="a" * 40,
+                        base_manifest_digest=verify.digest(task / "baseline.json"))
+        verify.save(task / "contract.json", contract)
+
+        def fail_before_unity(root):
+            run = next((root / "Workflow/Runs").iterdir())
+            for name in ("Project/Library/cache.bin", "PreparationPlayer/partial.bin",
+                         "Project/Assets/source.cs", "prepare.log"):
+                path = run / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"fixture")
+            raise verify.InvalidEvidence("의도한 검증 실패")
+
+        with mock.patch.object(verify, "ROOT", self.root), mock.patch.object(verify, "check_lock", fail_before_unity):
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = verify.run(task / "contract.json", None)
+        run = next((self.root / "Workflow/Runs").iterdir())
+        self.assertFalse((run / "Project/Library").exists())
+        self.assertFalse((run / "PreparationPlayer").exists())
+        self.assertEqual(code, 1)
+        report = verify.load(run / "report.json")
+        self.assertEqual(report["machine_result"], "FAIL")
+        self.assertEqual(report["gates"][0]["reason"], "의도한 검증 실패")
+        self.assertEqual((run / "prepare.log").read_bytes(), b"fixture")
+        self.assertEqual((run / "Project/Assets/source.cs").read_bytes(), b"fixture")
+        self.assertEqual(report["storage_cleanup"]["removed_bytes"], 14)
+
+    def test_cleanup_preserves_sources_player_evidence_and_other_runs(self):
+        run = self.root / "Workflow/Runs/current"
+        disposable = ("Project/Library/cache", "Project/Temp/cache", "Project/obj/cache", "PreparationPlayer/cache")
+        protected = ("Project/Assets/game.cs", "Project/Packages/manifest.json", "Project/ProjectSettings/settings",
+                     "Player/MidnightMouse.exe", "prepare.log", "playmode.xml", "report.json", "source.json")
+        siblings = ("MidnightMouse/Library/cache", "Workflow/Runs/older/Project/Library/cache",
+                    "Workflow/Tasks/task/Submission/final.zip")
+        for path in [*(run / name for name in disposable + protected), *(self.root / name for name in siblings)]:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"keep")
+        with mock.patch.object(verify, "ROOT", self.root):
+            result = verify.cleanup_run_work(run)
+        self.assertEqual(result["removed_bytes"], 16)
+        self.assertEqual(result["retained"], [])
+        for name in disposable:
+            self.assertFalse((run / name).exists())
+        for path in [*(run / name for name in protected), *(self.root / name for name in siblings)]:
+            self.assertEqual(path.read_bytes(), b"keep")
+
+    def test_cleanup_refuses_non_run_and_unconfirmed_process_exit(self):
+        for relative, process in [("MidnightMouse", None), ("Workflow/Runs/current", {"pid": 123, "exit_code": None})]:
+            with self.subTest(relative=relative):
+                run = self.root / relative
+                cache = run / "Project/Library/keep"
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_bytes(b"keep")
+                if process is not None:
+                    verify.save(run / "compile.process.json", process)
+                with mock.patch.object(verify, "ROOT", self.root):
+                    result = verify.cleanup_run_work(run)
+                self.assertEqual(cache.read_bytes(), b"keep")
+                self.assertEqual(result["removed"], [])
+                self.assertTrue(result["retained"])
+
+    def test_cleanup_retains_linked_or_locked_directory_and_reports_reason(self):
+        run = self.root / "Workflow/Runs/current"
+        cache = run / "Project/Library/nested/keep"
+        cache.parent.mkdir(parents=True)
+        cache.write_bytes(b"keep")
+        with mock.patch.object(verify, "ROOT", self.root):
+            with mock.patch.object(Path, "is_junction", lambda path: path == cache.parent):
+                linked = verify.cleanup_run_work(run)
+            self.assertEqual(cache.read_bytes(), b"keep")
+            self.assertEqual(linked["removed"], [])
+            self.assertTrue(linked["retained"])
+            with mock.patch.object(verify.shutil, "rmtree", side_effect=PermissionError("파일 사용 중")):
+                locked = verify.cleanup_run_work(run)
+            self.assertEqual(cache.read_bytes(), b"keep")
+            self.assertEqual(locked["removed"], [])
+            self.assertIn("파일 사용 중", locked["retained"][0]["reason"])
+
+    def test_timeout_records_confirmed_process_exit_before_cleanup(self):
+        with self.assertRaises(verify.InvalidEvidence):
+            verify.execute([sys.executable, "-c", "import time; time.sleep(1)"], dict(os.environ),
+                           self.root, "timeout", time.monotonic() + 0.1)
+        process = verify.load(self.root / "timeout.process.json")
+        self.assertTrue(process["timed_out"])
+        self.assertIsInstance(process.get("exit_code"), int)
 
 
 if __name__ == "__main__":

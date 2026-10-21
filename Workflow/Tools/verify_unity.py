@@ -1,4 +1,4 @@
-"""감독형 Unity 검증. 원본의 고정 사본에서 실행하고 원시 증거를 보존한다."""
+"""감독형 Unity 검증. 소스·원시 증거·최종 빌드를 남기고 실행 임시물은 정리한다."""
 import argparse
 import fnmatch
 import hashlib
@@ -214,6 +214,45 @@ def check_lock(root):
     return lock
 
 
+def cleanup_run_work(directory):
+    """이번 실행의 재생성 가능한 폴더만 제거한다. 이전 실행은 탐색하지 않는다."""
+    result = {"removed": [], "removed_bytes": 0, "retained": []}
+    try:
+        if directory.parent != ROOT / "Workflow/Runs":
+            raise InvalidEvidence("정리 대상은 Runs 바로 아래의 실행 폴더여야 함")
+        safe_path(ROOT, directory.relative_to(ROOT).as_posix())
+        for path in directory.glob("*.process.json"):
+            process = load(path)
+            if not isinstance(process, dict) or (process.get("pid") and type(process.get("exit_code")) is not int):
+                raise InvalidEvidence(f"프로세스 종료를 확인할 수 없음: {path.name}")
+    except (InvalidEvidence, OSError) as exc:
+        result["retained"].append({"path": ".", "reason": str(exc)})
+        return result
+    for name in ("Project/Library", "Project/Temp", "Project/obj", "PreparationPlayer"):
+        try:
+            path = safe_path(ROOT, (directory / name).relative_to(ROOT).as_posix())
+            if not path.exists():
+                continue
+            if not path.is_dir():
+                raise InvalidEvidence("예상한 임시 폴더 형식이 아님")
+            pending, size = [path], 0
+            while pending:
+                with os.scandir(pending.pop()) as entries:
+                    for entry in entries:
+                        if entry.is_symlink() or getattr(Path(entry.path), "is_junction", lambda: False)():
+                            raise InvalidEvidence(f"임시 폴더 안의 링크 경로: {entry.name}")
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append(entry.path)
+                        else:
+                            size += entry.stat(follow_symlinks=False).st_size
+            shutil.rmtree(path)
+            result["removed"].append(name)
+            result["removed_bytes"] += size
+        except (InvalidEvidence, OSError) as exc:
+            result["retained"].append({"path": name, "reason": str(exc)})
+    return result
+
+
 def execute(args, env, directory, stage, deadline):
     """자신이 시작한 프로세스만 정리하며 실행 증거를 남긴다."""
     record = {"args": [str(arg) for arg in args], "started_at": utc()}
@@ -245,6 +284,8 @@ def execute(args, env, directory, stage, deadline):
         record["timed_out"] = True
         raise InvalidEvidence(f"{stage} 총 실행 시간 한도 초과") from exc
     finally:
+        if process is not None:
+            record["exit_code"] = process.poll()
         record["ended_at"] = utc()
         save(directory / f"{stage}.process.json", record)
 
@@ -429,9 +470,13 @@ def run(contract_path, editor):
         machine, result, state = overall_result(report["gates"], contract["human_playtest_required"], report["stop_requested"])
         report.update(machine_result=machine, result=result, state=state, ended_at=utc(), elapsed_seconds=round(time.monotonic() - started, 2))
         save(directory / "report.json", report)
+        report["storage_cleanup"] = cleanup_run_work(directory)
+        save(directory / "report.json", report)
         print(f"기계 검사: {machine}; 납품 판정: {result}; 상태: {state}", flush=True)
         for item in report["gates"]:
             print(f"  {item['gate_id']}: {item['result']} — {item['reason']}", flush=True)
+        for item in report["storage_cleanup"]["retained"]:
+            print(f"임시물 정리 미완료: {item['path']} — {item['reason']}", flush=True)
         print(f"보고서: {directory / 'report.json'}", flush=True)
     return 0 if report["machine_result"] == "PASS" else 1
 
