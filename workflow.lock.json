@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "workflow_release_id": "supervised-local-2026-10-19-r3",
+  "workflow_release_id": "supervised-local-2026-10-20-r4",
   "environment_id": "midnightmouse-unity-6000.6.0f1-win64-v1",
   "files": {
     ".agents/skills/verify-midnight-mouse/SKILL.md": "sha256:f7e6125cb50f593bba8be6b858b8d212c5ad1782acd19c7a3d3dedc446761a2f",
-    "AGENTS.md": "sha256:d736140a451362615f0653fc05e4e05016207e47a0a2b6f3d385cf8c75ff103c",
+    "AGENTS.md": "sha256:873972bfa8a5a7154c680fc81e0bef35657a1895eab5069f3c9555ab9444cd52",
     "CLAUDE.md": "sha256:f73574ef246941f41b678f96d67630a229754d0e6ae56c96b466e8f563c4fd6a",
-    "Workflow/AI_지침.md": "sha256:1039f206bdae6b4c110b55f327e4b0c35c4309619ef5199099ee4d4c9e1a989f",
-    "Workflow/README.md": "sha256:5b6a226fa017ff16fc98af8f0b4c068e484875e0a2c710421147cdd95041f1df",
+    "Workflow/AI_지침.md": "sha256:11abbef16b1661536c6d7aad7696d335c7931d96208847f9cec7ed6db86fd942",
+    "Workflow/README.md": "sha256:3340f8aca229514e2dfddc5913cc200868cb1148ca8f0b526c3b178991402f12",
     "Workflow/Skills/verify-midnight-mouse/SKILL.md": "sha256:f7e6125cb50f593bba8be6b858b8d212c5ad1782acd19c7a3d3dedc446761a2f",
     "Workflow/Templates/개선제안.md": "sha256:359599051a10aa3fbaae63d28f8489895673354f04515e243d84085d20b59471",
     "Workflow/Templates/구현계획.md": "sha256:81886e1627b8181e291bff6c9cf77083c06fe6bee98526b4805f8b5d5dc7a34a",
@@ -16,12 +16,12 @@
     "Workflow/Templates/노트.md": "sha256:92f3a21e58498043645f9dc56e753bf551aae66b49e710a303a1df2547ceaf84",
     "Workflow/Templates/도입복구.md": "sha256:97b8cc36612d9b3de6636b7fe97fb815a094f204f8d87f47c47b7705e49bdb3b",
     "Workflow/Templates/비교보고서.md": "sha256:7e23fc84575aa94b47bbbcf6b657d538282445c888ed0487238001f83ebed8a9",
-    "Workflow/Templates/실행보고서.md": "sha256:2e243eb8f821c783fd38b412b636fc0c53f9d8b770570372af72bc98726ae4b9",
-    "Workflow/Templates/작업계약.json": "sha256:098ee024a2d430a0ec8b9d00f41d86b5637ca0ad660278755a41401e263b74b2",
+    "Workflow/Templates/실행보고서.md": "sha256:e581b41b303b9272fbe756b4f96a71ba5da8a76e17b488ad2ec53866218b41ea",
+    "Workflow/Templates/작업계약.json": "sha256:afb1f503920d6040e0803dad7b90046213a24ece142e3cc932163af8c28b6480",
     "Workflow/Templates/플레이확인.md": "sha256:da742e9596ce5e43735c04f036f5eb0cf01582cde248870fbb4632d7e2d352fb",
     "Workflow/Tools/check.py": "sha256:df2f47035b016ea382236becce12219a53f7f0883f4461ba3abb3b099c674b73",
-    "Workflow/Tools/test_verify_unity.py": "sha256:60a2c346d529edc152d0bbcd3f30ab8a05b0a67a7e54a2dc3ca7a543d1d02544",
-    "Workflow/Tools/verify_unity.py": "sha256:bf9c9010eb0d012c0bb3ac254b3eb17c772cb4f2cba479f5e43dae8271f67087",
+    "Workflow/Tools/test_verify_unity.py": "sha256:63123a6e37ec8c6d98cd0a870e3beedceda208a42239bb4a7baff4bff2c48643",
+    "Workflow/Tools/verify_unity.py": "sha256:e31452275495df4a0307f8fe7f404e3ce2bd9b5025f24d031b5093f60646eb1a",
     "Workflow/Verification/unity-plan.json": "sha256:f1dccbc812ee1052d842c096dbd7dd816b65c6a967fe525664e23f6696538a96",
     "Workflow/Verification/UnitySupport/Editor/MidnightMouse.Workflow.Editor.asmdef": "sha256:fba5aff80ce691bd02f67c03008651fa8b4abb972751bd8d59ffc0bceeb1c17a",
     "Workflow/Verification/UnitySupport/Editor/MidnightMouse.Workflow.Editor.asmdef.meta": "sha256:411e0af9c062d80173cd3d680f068ae95a1b693634dca3ea3feb7a8025de4d3c",
@@ -45,7 +45,7 @@
     "Workflow/Verification/UnitySupport/Tests/PlayMode.meta": "sha256:12a3f4303758a5a179c6f5f38f301540ecabf74fa324864a084b60836e458ccf",
     "Workflow/Verification/UnitySupport/Tests.meta": "sha256:058f45b81ed4365964128cb3ac44f6961dd472cb0954674a8bf5dfaf733fba31",
     "Workflow/Verification/UnitySupport.meta": "sha256:b7588e51ae3c26b596bb4d9b574cd0d96001db484ead8fe8c71385ad12aaec61",
-    "Workflow/검증.md": "sha256:a596a1762bd8e99c61a2c2d4494e45180115eddfb8fcab6210ed3081baedc523",
-    "Workflow/자기개선.md": "sha256:4f21d40a362c09c1ee63dc9d5397218f3a505aa7d930fcd55f84776e4dcf6c08"
+    "Workflow/검증.md": "sha256:296812a064e4f38038d7fdb8cb0cfd755699074df94d4e7115776c380261e245",
+    "Workflow/자기개선.md": "sha256:cfc610fb59934868512555b3a628348c97d53fd292dee615b3128170470b80ed"
   }
 }

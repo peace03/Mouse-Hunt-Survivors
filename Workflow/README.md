@@ -14,6 +14,8 @@
 
 AI 종류에 따른 고정 인계는 없습니다. 이미 허가된 작업은 조사부터 보고까지 이어서 수행합니다. 사용자가 정한 게임 목표·권한·수용 기준이 경계입니다.
 
+[보관 규칙](AI_지침.md#6-보관과-정리)은 현재 원본·최신 결과·필수 근거를 남기는 방식입니다. 단순 조회는 채팅으로 끝내고 Git에 있는 수정 전 파일을 별도 백업하지 않습니다. 새 검증 실행의 캐시·준비 빌드는 종료 후 자동 정리하며, 이번 작업의 프레임·미리보기·중복본은 최종 결과 확인 뒤 정리합니다. 기존 자료와 과제별 최신 제출본을 소급해 삭제하지 않습니다.
+
 ## 경로와 원본
 
 | 정보 | 원본 |
@@ -33,7 +35,7 @@ AI 종류에 따른 고정 인계는 없습니다. 이미 허가된 작업은 �
 
 설계서의 `game-project/`는 저장소 루트, Unity 소스는 `MidnightMouse/`에 대응합니다. `tasks/`, `runs/`, `scripts/verify-unity.ps1`은 각각 `Workflow/Tasks/`, `Workflow/Runs/`, `Workflow/Tools/verify_unity.py`를 사용합니다. 설치된 Python 표준 라이브러리를 사용하므로 별도 PowerShell 래퍼나 패키지가 필요하지 않습니다.
 
-개선 후보는 우선 저장소 안의 비활성 폴더에 보관합니다. 별도 `workflow-lab` 저장소·계정 격리·상태 서비스는 실제 필요와 권한이 정해지면 분리합니다. 원문은 보존하고 이 문서가 프로젝트별 경로 대응을 설명합니다.
+개선 후보는 비교하는 동안 저장소 안의 비활성 폴더에 둡니다. 적용 후에는 활성 파일·검증 결과·Git 복구 위치를 남기고 중복 후보를 정리합니다. 별도 `workflow-lab` 저장소·계정 격리·상태 서비스는 실제 필요와 권한이 정해지면 분리합니다. 원문은 보존하고 이 문서가 프로젝트별 경로 대응을 설명합니다.
 
 ## 실행 명령
 
@@ -42,10 +44,10 @@ AI 종류에 따른 고정 인계는 없습니다. 이미 허가된 작업은 �
 ```powershell
 python -B Workflow/Tools/check.py --write
 python -B -m unittest discover -s Workflow/Tools -p "test_*.py"
-python -B Workflow/Tools/verify_unity.py --contract Workflow/Tasks/2026-10-19-workflow-bootstrap-r3/contract.json
+python -B Workflow/Tools/verify_unity.py --contract Workflow/Tasks/<task-id>/contract.json
 ```
 
-마지막 명령은 교체 당시 기준선을 고정한 구축 검증용입니다. 이후 게임 작업은 [검증 방법](검증.md)에 따라 새 기준선·계약을 만듭니다. 기존 계약을 현재 변경에 맞춰 덮어쓰지 않습니다.
+마지막 명령의 `<task-id>`는 실제 작업 ID로 바꿉니다. [검증 방법](검증.md)에 따라 현재 운영 버전에 맞는 새 기준선·계약을 만듭니다. 교체 당시의 구축 계약과 과거 결과는 이력이며 현재 변경에 맞춰 덮어쓰지 않습니다.
 
 ## 요청 예
 

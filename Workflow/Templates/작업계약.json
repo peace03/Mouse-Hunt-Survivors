@@ -11,7 +11,7 @@
   ],
   "base_oid": "0000000000000000000000000000000000000000",
   "base_manifest_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  "workflow_release_id": "supervised-local-2026-10-19-r3",
+  "workflow_release_id": "supervised-local-2026-10-20-r4",
   "environment_id": "midnightmouse-unity-6000.6.0f1-win64-v1",
   "assurance_level": "supervised_local",
   "allowed_write": [
