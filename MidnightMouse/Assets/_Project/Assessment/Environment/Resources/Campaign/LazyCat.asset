@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b82ba8e2fbab92a4fb1b9a7067b1f593, type: 3}
+  m_Name: LazyCat
+  m_EditorClassIdentifier: 
+  _id: lazy
+  _kind: 1
+  _health: 5
+  _patrol: 2.5
+  _investigate: 3.5
+  _chase: 4
+  _retreat: 7
+  _hearing: 1
+  _wakeSpeed: 5.5
+  _wakeDuration: 6
+  _sleepDamageMultiplier: 2
+  _walkWakeSeconds: 3
+  _runWakeSeconds: 1.5

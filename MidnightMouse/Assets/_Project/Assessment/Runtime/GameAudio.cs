@@ -9,6 +9,7 @@ namespace MidnightMouse
         [SerializeField, Range(0f, 1f), Tooltip("효과음 전체 음량(배). 올리면 소리가 커짐. 권장 0.3~0.6.")] private float _volume = 0.45f;
         private AudioSource _source;
         private AudioClip[] _clips;
+        private int _wakeFrame = -1;
 
         /// <summary>반복 재생 때 할당이 없도록 작은 파형을 시작 시 한 번 만든다.</summary>
         private void Awake()
@@ -16,7 +17,7 @@ namespace MidnightMouse
             _source = GetComponent<AudioSource>();
             _source.playOnAwake = false;
             _source.spatialBlend = 0f;
-            _clips = new AudioClip[10];
+            _clips = new AudioClip[11];
             _clips[(int)GameSound.Pickup] = CreateTone("치즈", 700f, 1100f, 0.13f);
             _clips[(int)GameSound.Dash] = CreateTone("대시", 320f, 70f, 0.17f);
             _clips[(int)GameSound.Hit] = CreateTone("피격", 190f, 65f, 0.35f);
@@ -27,12 +28,18 @@ namespace MidnightMouse
             _clips[(int)GameSound.Lose] = CreateTone("도망", 300f, 60f, 0.9f);
             _clips[(int)GameSound.Footstep] = CreateTone("발소리", 110f, 80f, 0.045f);
             _clips[(int)GameSound.Alert] = CreateTone("고양이", 340f, 520f, 0.22f);
+            _clips[(int)GameSound.Wake] = CreateTone("게으름냥 기상", 130f, 850f, 0.48f);
         }
 
         /// <summary>재생 중인 소리를 끊지 않고 효과음을 겹쳐 재생한다.</summary>
         public void Play(GameSound sound)
         {
             if (_source == null || _clips == null) return;
+            if (sound == GameSound.Wake)
+            {
+                if (_wakeFrame == Time.frameCount) return;
+                _wakeFrame = Time.frameCount;
+            }
             _source.PlayOneShot(_clips[(int)sound], _volume * (sound == GameSound.Footstep ? 0.12f : 1f));
         }
 
