@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c8ec72ed36266c41a4d146b58381e50, type: 3}
+  m_Name: Night2
+  m_EditorClassIdentifier: 
+  _id: cleaning_night
+  _title: 2일째 · 거실 대청소
+  _order: 2
+  _stageSeconds: 60
+  _roster:
+  - kind: {fileID: 11400000, guid: 458d915882664ba2a81db08bee377d1c, type: 2}
+    counts:
+    - 2
+    - 2
+    - 3
+    - 3
+    - 4
+  _vacuum: 1
+  _baitImmunity: 30
+  _chaseMultiplier: 1
+  _banishTarget: 4
+  _requestTrap: 1
+  _requestName: 대청소
+  _requestHits: 2
+  _introduction: 미끼를 먹은 고양이는 한동안 미끼를 무시한다(×). 그때는 청소기로 마무리하라.
+  _stageLines:
+  - 집사가 잠들었다. 고양이들의 시간이다.
+  - 고양이들이 집 안을 돌기 시작했다.
+  - 고양이들이 치즈 냄새를 맡았다.
+  - 밤이 깊어 간다…
+  - 창밖이 밝아온다. 조금만 더!

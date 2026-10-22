@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c8ec72ed36266c41a4d146b58381e50, type: 3}
+  m_Name: Night1
+  m_EditorClassIdentifier: 
+  _id: first_crumb
+  _title: 1일째 · 첫 밤
+  _order: 1
+  _stageSeconds: 45
+  _roster:
+  - kind: {fileID: 11400000, guid: 458d915882664ba2a81db08bee377d1c, type: 2}
+    counts:
+    - 1
+    - 2
+    - 2
+    - 3
+    - 3
+  _vacuum: 0
+  _baitImmunity: 0
+  _chaseMultiplier: 1
+  _banishTarget: 3
+  _requestTrap: 0
+  _requestName: 깨진 컵
+  _requestHits: 2
+  _introduction: 호기심냥은 소리와 미끼 치즈에 끌린다. 스위치를 눌러 컵을 떨어뜨려라.
+  _stageLines:
+  - 집사가 잠들었다. 고양이들의 시간이다.
+  - 고양이들이 집 안을 돌기 시작했다.
+  - 고양이들이 치즈 냄새를 맡았다.
+  - 밤이 깊어 간다…
+  - 창밖이 밝아온다. 조금만 더!
