@@ -91,17 +91,18 @@ namespace MidnightMouse
                 cats[i] = cat.GetComponent<CatController>();
             }
 
-            TrapController cup = InstantiatePrefab(cupPrefab, "Trap_Cup", new Vector3(3f, 0f, -.5f))
+            TrapController cup = InstantiatePrefab(cupPrefab, "Trap_Cup", new Vector3(-3f, 0f, -.5f))
                 .GetComponent<TrapController>();
-            cup.transform.Find("Visual").localPosition = new Vector3(2.2f, 1.4f, 1f);
-            TrapController vacuum = InstantiatePrefab(vacuumPrefab, "Trap_Vacuum", new Vector3(8f, 0f, -5.8f))
+            cup.transform.Find("Visual").localPosition = new Vector3(8.2f, 1.4f, 1f);
+            cup.transform.Find("EffectCenter").localPosition = new Vector3(6f, .05f, 0f);
+            TrapController vacuum = InstantiatePrefab(vacuumPrefab, "Trap_Vacuum", new Vector3(-8f, 0f, -4.5f))
                 .GetComponent<TrapController>();
             Transform routeRoot = new GameObject("Vacuum_Route").transform;
             Transform[] route = CreatePoints(routeRoot, new[]
             {
-                new Vector3(8f, 0f, -5.8f), new Vector3(10.3f, 0f, -1.5f),
-                new Vector3(9.5f, 0f, 4.2f), new Vector3(1.8f, 0f, 4.2f),
-                new Vector3(.8f, 0f, -1.8f), new Vector3(4f, 0f, -5.8f)
+                new Vector3(-8f, 0f, -4.5f), new Vector3(-3f, 0f, -4.5f),
+                new Vector3(.8f, 0f, -4.5f), new Vector3(.8f, 0f, 1f),
+                new Vector3(-5f, 0f, 2.8f), new Vector3(-8f, 0f, 2.8f)
             });
             SetReferences(vacuum, "_route", route);
 
@@ -137,6 +138,9 @@ namespace MidnightMouse
             SetReference(hud, "_game", game);
             SetReference(hud, "_font", font);
 
+            AssessmentArtSetup.ApplyToScene(scene);
+            M1LayoutSetup.ApplyToScene(scene);
+            M1LayoutSetup.Validate();
             ValidateScene();
             AssetDatabase.SaveAssets();
             if (!EditorSceneManager.SaveScene(scene, ScenePath))
