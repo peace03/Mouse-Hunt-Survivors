@@ -1,0 +1,15 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!221 &22100000
+AnimatorOverrideController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: CatLocomotion
+  m_Controller: {fileID: 9100000, guid: edd937fb2e80ed7478b8af7507102a78, type: 2}
+  m_Clips:
+  - m_OriginalClip: {fileID: 7400000, guid: 74a471f886b4425408931f185834f69a, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 24257d94d6d61854d807c43ca92b50f4, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: 0370a02b38820c54ba758da9b70280b9, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 8031c045584b3984285ef4cf11db5bed, type: 2}
