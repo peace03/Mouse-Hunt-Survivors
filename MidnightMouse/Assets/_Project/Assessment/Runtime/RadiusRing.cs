@@ -7,6 +7,7 @@ namespace MidnightMouse
     {
         private LineRenderer _line;
         private Material _material;
+        private float _arc = 1f;
 
         /// <summary>원점을 기준으로 한 번만 원형 선을 만든다.</summary>
         public static RadiusRing Create(Transform parent, string objectName, Color color, float width = 0.035f)
@@ -39,6 +40,21 @@ namespace MidnightMouse
             transform.localScale = new Vector3(radius, 1f, radius);
             _material.color = color;
             _line.enabled = visible;
+        }
+
+        /// <summary>반경을 유지한 채 원호 길이를 줄여 남은 비율을 표시한다.</summary>
+        public void SetArc(float remaining)
+        {
+            remaining = Mathf.Clamp01(remaining);
+            if (Mathf.Approximately(_arc, remaining)) return;
+            _arc = remaining;
+            _line.loop = false;
+            _line.positionCount = 65;
+            for (int index = 0; index <= 64; index++)
+            {
+                float angle = Mathf.PI * .5f - index * Mathf.PI * 2f * remaining / 64f;
+                _line.SetPosition(index, new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)));
+            }
         }
 
         /// <summary>씬에서 만든 머티리얼을 씬 종료 시 해제한다.</summary>

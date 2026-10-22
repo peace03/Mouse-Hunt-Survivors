@@ -8,7 +8,7 @@ using UnityEngine.InputSystem.UI;
 namespace MidnightMouse
 {
     /// <summary>게임 루트에 붙여 세션 상태를 한글 Canvas 화면과 버튼으로 보여준다.</summary>
-    public sealed class GameHud : MonoBehaviour
+    public sealed partial class GameHud : MonoBehaviour
     {
         [SerializeField, Tooltip("화면에서 관찰하고 버튼으로 제어할 게임 세션.")]
         private GameController _game;
@@ -23,7 +23,7 @@ namespace MidnightMouse
         private Sprite _flatSprite;
         private RectTransform _canvas;
         private GameObject _title, _hud, _pause, _upgrade, _result, _help, _settings, _quit;
-        private TMP_Text _hearts, _clock, _phaseLabel, _score, _level, _hint, _cooldowns;
+        private TMP_Text _hearts, _clock, _phaseLabel, _score, _level, _hint, _cooldowns, _dawnBonus, _debugNotice;
         private TMP_Text _resultTitle, _resultBody;
         private UnityEngine.UI.Image _experience, _dawn;
         private readonly TMP_Text[] _upgradeTitles = new TMP_Text[3];
@@ -39,7 +39,8 @@ namespace MidnightMouse
         private GameObject _overlayReturnFocus;
 
         private bool HasOverlay => (_help != null && _help.activeSelf)
-            || (_settings != null && _settings.activeSelf) || (_quit != null && _quit.activeSelf);
+            || (_settings != null && _settings.activeSelf) || (_quit != null && _quit.activeSelf)
+            || HasCampaignOverlay;
 
         /// <summary>필수 참조를 확인하고 게임 상태와 독립적인 표시물을 한 번만 만든다.</summary>
         private void Start()
@@ -65,6 +66,7 @@ namespace MidnightMouse
             GameSettings.Load();
             BuildSettings();
             BuildQuit();
+            BuildCampaign();
             Refresh();
             StartCoroutine(RefreshLoop());
         }
@@ -73,7 +75,9 @@ namespace MidnightMouse
         private void Update()
         {
             var keyboard = Keyboard.current;
+            if (_game != null && HandleCampaignInput(keyboard)) return;
             if (keyboard == null || _game == null) return;
+            if (_game.Phase == GamePhase.Ready || _game.StartedThisFrame) return;
             // Esc는 가장 위의 창 하나만 닫아 설정 취소와 게임 재개가 겹치지 않게 한다.
             if (keyboard[_game.PauseKey].wasPressedThisFrame)
             {
@@ -109,8 +113,10 @@ namespace MidnightMouse
             var phase = _game.Phase;
             if (_shownPhase != phase || (phase == GamePhase.Upgrade && _shownLevel != _game.Level))
             {
+                if (_shownPhase == GamePhase.Ready && phase == GamePhase.Playing) ShowNightBanner();
                 _shownPhase = phase;
                 _shownLevel = _game.Level;
+                CloseCampaignOverlay();
                 _title.SetActive(phase == GamePhase.Title);
                 _hud.SetActive(phase != GamePhase.Title);
                 _pause.SetActive(phase == GamePhase.Paused);
@@ -137,8 +143,10 @@ namespace MidnightMouse
             float progress = Mathf.Clamp01(_game.Elapsed / Mathf.Max(1f, _game.Duration));
             int minutes = Mathf.FloorToInt(progress * 360f);
             _clock.SetText("{0:00}:{1:00}", (float)(minutes / 60), (float)(minutes % 60));
-            int stage = Mathf.Min(5, 1 + Mathf.FloorToInt(progress * 5f));
-            _phaseLabel.text = stage switch
+            _dawnBonus.text = Time.unscaledTime < _game.DawnNoticeUntil ? $"아침 +{_game.LastDawnAdvance:0.#}초" : "";
+            _debugNotice.text = Time.unscaledTime < _game.DebugNoticeUntil ? _game.DebugNotice : "";
+            int stage = _game.Stage;
+            _phaseLabel.text = _game.CurrentNight != null ? _game.CurrentNight.StageLine(_game.Elapsed) : stage switch
             {
                 1 => "고요한 밤 · 작은 발소리부터",
                 2 => "깨어나는 집 · 귀를 기울여요",
@@ -154,11 +162,15 @@ namespace MidnightMouse
             _cooldowns.text = "SPACE  대시 " + (_game.DashCooldown01 <= 0f ? "준비" : "충전 중")
                 + "     /     클릭  미끼 " + (_game.BaitCooldown01 <= 0f ? "준비" : "충전 중");
             for (int i = 0; i < 3; i++) _upgradeButtons[i].interactable = Time.unscaledTime >= _upgradeUnlockTime;
+            RefreshCampaign();
+            if (phase != GamePhase.Won && phase != GamePhase.Lost) return;
+            if (!_game.IsCampaignResultReady || _renderedResultPhase == phase) return;
+            _renderedResultPhase = phase;
             bool won = phase == GamePhase.Won;
             _resultTitle.text = won ? "아침이 왔어요." : "오늘 밤은 여기까지.";
             _resultTitle.color = won ? _gold : _cream;
             _resultBody.text = (won ? "모찌가 무사히 밤을 넘겼습니다.\n" : "모찌가 쥐구멍으로 몸을 숨겼습니다.\n")
-                + $"\n생존  {Mathf.FloorToInt(_game.Elapsed / 60f):00}:{Mathf.FloorToInt(_game.Elapsed % 60f):00}"
+                + $"\n생존  {Mathf.FloorToInt(_game.RealElapsed / 60f):00}:{Mathf.FloorToInt(_game.RealElapsed % 60f):00}"
                 + $"     치즈  {_game.CheeseCollected}\n쫓아낸 고양이  {_game.CatsBanished}     도달 레벨  {_game.Level}";
         }
 
@@ -198,6 +210,8 @@ namespace MidnightMouse
             _phaseLabel = Label(clock, "Stage", 10, 85, 350, 25, "", 15, _gold, TextAlignmentOptions.Center);
             var dawn = Panel(clock, "DawnTrack", 18, 119, 334, 3, new Color(0.22f, 0.3f, 0.34f));
             _dawn = Fill(dawn, "DawnProgress", _gold);
+            _dawnBonus = Label(clock, "DawnBonus", 10, 133, 350, 28, "", 22, _gold, TextAlignmentOptions.Center);
+            _debugNotice = Label(clock, "DebugNotice", -100, 165, 570, 28, "", 18, _cream, TextAlignmentOptions.Center);
             var right = Panel(_hud.transform, "ScorePanel", -26, 24, 355, 80, _ink);
             Anchor(right, new Vector2(1, 1), new Vector2(1, 1));
             _score = Label(right, "Score", 18, 15, 325, 30, "", 17, _cream);
@@ -229,8 +243,8 @@ namespace MidnightMouse
             Label(card, "Story", 42, 302, 510, 106,
                 "작은 쥐 모찌의 밤 나들이.\n소리로 고양이를 유인하고, 집 안의 물건으로\n길을 열어 겨울을 위한 치즈를 모으세요.", 23, _muted);
             Label(card, "Goal", 42, 438, 510, 72,
-                "목표  ·  5분 동안 생존하기\n하트가 모두 사라지면 밤 나들이가 끝나요.", 21, _cream);
-            _startButton = Button(card, "StartButton", 42, 544, 508, 67, "밤을 시작하기    ENTER", StartFromTitle, true, 24);
+                "목표  ·  아침 6시까지 살아남기\n고양이를 쫓아낼수록 아침이 빨리 와요.", 21, _cream);
+            _startButton = Button(card, "StartButton", 42, 544, 508, 67, "밤 고르기    ENTER", StartFromTitle, true, 24);
             Button(card, "HelpButton", 42, 627, 508, 44, "조작과 생존 요령", () => OpenOverlay(_help, "HelpButton"), false, 20);
             Button(card, "TitleSettingsButton", 42, 685, 246, 44, "설정", () => OpenSettings("TitleSettingsButton"), false, 20);
             Button(card, "TitleQuitButton", 304, 685, 246, 44, "게임 종료", () => OpenQuit("TitleQuitButton"), false, 20);
@@ -274,12 +288,14 @@ namespace MidnightMouse
         private void BuildResult()
         {
             _result = Layer("ResultScreen", true);
-            var card = CenterPanel(_result.transform, "ResultCard", 0, 0, 730, 560, _ink);
+            var card = CenterPanel(_result.transform, "ResultCard", 0, 0, 730, 660, _ink);
             Label(card, "ResultCaption", 42, 36, 646, 28, "모찌의 밤 나들이 기록", 20, _muted, TextAlignmentOptions.Center);
             _resultTitle = Label(card, "ResultTitle", 34, 101, 662, 75, "", 44, _gold, TextAlignmentOptions.Center);
-            _resultBody = Label(card, "ResultBody", 42, 207, 646, 151, "", 24, _cream, TextAlignmentOptions.Center);
-            _retryButton = Button(card, "RetryButton", 80, 389, 570, 62, "다시 밤 나들이", _game.RestartRun, true, 24);
-            Button(card, "ReturnTitleButton", 80, 472, 570, 45, "제목으로", _game.ReturnToTitle, false, 20);
+            _resultBody = Label(card, "ResultBody", 42, 190, 646, 125, "", 21, _cream, TextAlignmentOptions.Center);
+            _campaignResult = Label(card, "CampaignResult", 42, 330, 646, 105, "", 21, _gold, TextAlignmentOptions.Center);
+            _retryButton = Button(card, "RetryButton", 80, 460, 570, 52, "같은 밤 다시 하기", RetryCampaign, true, 24);
+            Button(card, "ChooseNightButton", 80, 530, 570, 45, "밤 고르기", ReturnToNightSelection, false, 20);
+            Button(card, "ReturnTitleButton", 80, 590, 570, 40, "제목으로", _game.ReturnToTitle, false, 20);
         }
 
         /// <summary>게임 규칙과 조작을 읽을 수 있는 도움말을 만든다.</summary>
@@ -289,9 +305,9 @@ namespace MidnightMouse
             var card = CenterPanel(_help.transform, "HelpCard", 0, 0, 880, 690, _ink);
             Label(card, "HelpTitle", 45, 35, 790, 60, "작은 쥐의 생존 요령", 38, _cream);
             Label(card, "HelpBody", 45, 127, 790, 430,
-                "01   움직임이 소리가 됩니다\nWASD 이동 · Ctrl 조용히 · Shift 빠르게 · Space 대시\n발밑의 원이 커질수록 더 멀리 있는 고양이가 듣습니다.\n\n"
-                + "02   고양이를 원하는 자리로\n클릭하면 그곳에 미끼 치즈를 던집니다.\n노란 함정 지점 근처에서 E: 컵을 떨어뜨리거나 청소기를 출발!\n\n"
-                + "03   치즈를 모으며 아침을 기다려요\n치즈로 레벨을 올리고 성장 카드 한 장을 고르세요.\n5분 생존하면 승리. 하트 0이면 패배. Esc로 잠시 멈춥니다.", 23, _cream);
+                "01   움직임이 소리가 됩니다\nWASD 이동 · Ctrl 조용히 · Shift 빠르게 · Space 대시\n대시는 출발점에 소리 잔상을 남기고 잠시 조용해져요.\n\n"
+                + "02   고양이를 원하는 자리로\n클릭: 미끼 던지기. 먹는 고양이에게도 잡혀요.\n스위치에서 E: 0.5초 동안 멈추세요. 움직이면 취소돼요.\n\n"
+                + "03   치즈를 모으며 아침을 당겨요\n치즈로 레벨을 올리고 성장 카드 한 장을 고르세요.\n고양이를 쫓아내면 아침이 빨라져요. Esc로 잠시 멈춥니다.", 23, _cream);
             Button(card, "CloseHelpButton", 45, 588, 790, 58, "알겠어요", CloseOverlay, true, 23);
         }
 
@@ -351,7 +367,7 @@ namespace MidnightMouse
         /// <summary>제목의 시작 버튼과 Enter가 같은 프레임에 들어와도 한 번만 시작한다.</summary>
         private void StartFromTitle()
         {
-            if (!HasOverlay && _game.Phase == GamePhase.Title) _game.StartRun();
+            if (!HasOverlay && _game.Phase == GamePhase.Title) OpenNightSelection();
         }
 
         /// <summary>현재 저장 값을 표시하고 음량 슬라이더에 키보드 초점을 준다.</summary>

@@ -7,6 +7,7 @@ namespace MidnightMouse
     {
         public GamePhase Phase { get; private set; }
         public float Elapsed { get; private set; }
+        public float RealElapsed { get; private set; }
         public float Duration { get; private set; }
         public int Hearts { get; private set; }
         public int MaxHearts { get; private set; }
@@ -45,14 +46,17 @@ namespace MidnightMouse
         }
 
         /// <summary>재시작을 포함해 모든 판별 진행 상태를 초기화한다.</summary>
-        public void Start()
+        public void Start(bool waitForInput = false)
         {
-            Phase = GamePhase.Playing;
-            Elapsed = InvulnerabilityRemaining = 0f;
+            Phase = waitForInput ? GamePhase.Ready : GamePhase.Playing;
+            Elapsed = RealElapsed = InvulnerabilityRemaining = 0f;
             Hearts = MaxHearts = _startHearts;
             CheeseCollected = Experience = CatsBanished = 0;
             Level = 1;
         }
+
+        /// <summary>준비된 판만 첫 입력으로 진행시킨다.</summary>
+        public void BeginPlay() { if (Phase == GamePhase.Ready) Phase = GamePhase.Playing; }
 
         /// <summary>진행 상태에서만 시간과 무적을 줄이고 생존 완료를 판정한다.</summary>
         public void Tick(float delta)
@@ -60,9 +64,16 @@ namespace MidnightMouse
             if (Phase != GamePhase.Playing || delta <= 0f || float.IsNaN(delta) || float.IsInfinity(delta))
                 return;
             InvulnerabilityRemaining = Math.Max(0f, InvulnerabilityRemaining - delta);
-            Elapsed = Math.Min(Duration, Elapsed + delta);
-            if (Elapsed >= Duration)
-                Phase = GamePhase.Won;
+            RealElapsed += Math.Min(delta, Duration - Elapsed);
+            AdvanceClock(delta);
+        }
+
+        /// <summary>아침 당김과 디버그는 실제 시간·무적을 건드리지 않고 게임 시계만 옮긴다.</summary>
+        public void AdvanceClock(float seconds)
+        {
+            if (Phase != GamePhase.Playing || seconds <= 0f || float.IsNaN(seconds) || float.IsInfinity(seconds)) return;
+            Elapsed = Math.Min(Duration, Elapsed + seconds);
+            if (Elapsed >= Duration) Phase = GamePhase.Won;
         }
 
         /// <summary>피격이 허용된 경우 한 하트를 잃고 무적 또는 패배로 전환한다.</summary>

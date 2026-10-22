@@ -36,7 +36,7 @@ namespace MidnightMouse
             _attracting = false;
             _restPosition = position + Vector3.up * 0.18f;
             transform.position = _restPosition;
-            transform.localScale = _baseScale * (experience > 1 ? 1.5f : 1f);
+            transform.localScale = _baseScale * (experience > 1 ? _game.Rules.BigCheeseScale : 1f);
             gameObject.SetActive(true);
         }
 
@@ -56,7 +56,7 @@ namespace MidnightMouse
             if (difference.sqrMagnitude <= _game.Rules.PickupRadius * _game.Rules.PickupRadius) _attracting = true;
             if (_attracting)
             {
-                transform.position = Vector3.MoveTowards(transform.position, target, 9f * delta);
+                transform.position = Vector3.MoveTowards(transform.position, target, _game.Rules.PickupSpeed * delta);
                 if ((target - transform.position).sqrMagnitude <= 0.25f * 0.25f)
                 {
                     _game.CollectCheese(_experience);

@@ -14,8 +14,11 @@ namespace MidnightMouse
         [SerializeField, Range(1, 12), Tooltip("첫 레벨 필요 경험치(점). 올리면 초기 성장 지연. 권장 4.")] private int _baseExperience = 4;
         [SerializeField, Range(0, 6), Tooltip("레벨당 필요 경험치 증가(점). 올리면 후반 성장 지연. 권장 2.")] private int _experienceStep = 2;
         [SerializeField, Range(20f, 120f), Tooltip("고양이 증원 단계 간격(초). 올리면 난도 상승 지연. 권장 60.")] private float _stageDuration = 60f;
-        [SerializeField, Tooltip("단계별 고양이 수(마리). 올리면 추격 난도 증가. 권장 2, 3, 4, 6, 7.")] private int[] _catsPerStage = { 2, 3, 4, 6, 7 };
+        [SerializeField, Tooltip("측정 판 단계별 동시 고양이 수(마리). 올리면 추격 난도 증가. 2일째 근사: 2, 2, 3, 3, 4.")] private int[] _catsPerStage = { 2, 2, 3, 3, 4 };
         [SerializeField, Range(0.5f, 8f), Tooltip("동일 단계의 추가 입장 간격(초). 올리면 증원이 분산됨. 권장 3.")] private float _reinforcementInterval = 3f;
+        [SerializeField, Range(0f, 5f), Tooltip("퇴장 고양이 최대 체력당 아침 당김(초). 올리면 승리가 빨라짐. 초기값 2.")] private float _dawnPerHealth = 2f;
+        [SerializeField, Range(0.1f, 2f), Tooltip("쥐 몸 소리 전역 배율(배). 올리면 더 넓게 들림. M0 기하 측정 후보 0.65, 검토 범위 0.55~0.70.")] private float _globalNoiseMultiplier = 0.65f;
+        [SerializeField, Range(0.15f, 2f), Tooltip("대시 시작부터 이동 소리가 없는 시간(초). 올리면 잔상으로 탈출하기 쉬움. 초기값 0.5.")] private float _dashSilence = 0.5f;
 
         [Header("호기심냥")]
         [SerializeField, Range(1, 8), Tooltip("고양이 체력(점). 올리면 더 많은 함정 필요. 권장 3.")] private int _catHearts = 3;
@@ -31,16 +34,20 @@ namespace MidnightMouse
         [SerializeField, Range(0.4f, 1.5f), Tooltip("잡기 판정 거리(m). 올리면 피격 범위 증가. 권장 0.8.")] private float _catchRadius = 0.8f;
         [SerializeField, Range(0.2f, 3f), Tooltip("잡은 후 멈춤(초). 올리면 탈출 여유 증가. 권장 1.")] private float _catchRest = 1f;
         [SerializeField, Range(3f, 40f), Tooltip("퇴장 뒤 재입장 대기(초). 올리면 보상성 휴식 증가. 권장 20.")] private float _respawnDelay = 20f;
+        [SerializeField, Range(1f, 20f), Tooltip("퇴장 이동 최대 시간(초). 올리면 출구까지 오래 달림. 초기값 8.")] private float _retreatTimeout = 8f;
+        [SerializeField, Range(1f, 40f), Tooltip("고양이 가속도(m/s²). 올리면 목표 속도에 빨리 도달. 초기값 18.")] private float _catAcceleration = 18f;
 
         [Header("함정")]
         [SerializeField, Range(0.5f, 3f), Tooltip("함정 상호작용 거리(m). 올리면 멀리서 E 사용 가능. 권장 1.2.")] private float _interactionRadius = 1.2f;
-        [SerializeField, Range(2f, 8f), Tooltip("함정 범위 표시 거리(m). 올리면 더 멀리서 범위를 봄. 권장 4.")] private float _trapPreviewDistance = 4f;
+        [SerializeField, Range(0.1f, 2f), Tooltip("스위치 누르는 시간(초). 올리면 누르는 동안 오래 노출됨. 초기값 0.5.")] private float _switchPressDuration = 0.5f;
+        [SerializeField, Range(1f, 8f), Tooltip("스위치 누르는 일반 소리 반경(m). 올리면 고양이가 멀리서 들음. 초기값 3.")] private float _switchNoiseRadius = 3f;
+        [SerializeField, Range(0.1f, 1f), Tooltip("누르는 소리 전달 간격(초). 올리면 감지 갱신 감소. 초기값 0.25.")] private float _switchNoiseInterval = 0.25f;
         [SerializeField, Range(0.1f, 2f), Tooltip("컵 낙하 지연(초). 올리면 정확한 예측 필요. 권장 0.5.")] private float _cupDelay = 0.5f;
         [SerializeField, Range(1f, 5f), Tooltip("컵 타격 반경(m). 올리면 여러 고양이를 맞힘. 권장 3.")] private float _cupRadius = 3f;
         [SerializeField, Range(1, 4), Tooltip("컵 피해(점). 올리면 쉽게 퇴장시킴. 권장 2.")] private int _cupDamage = 2;
         [SerializeField, Range(1f, 8f), Tooltip("컵 기절(초). 올리면 후속 함정 여유 증가. 권장 4.")] private float _cupStun = 4f;
         [SerializeField, Range(3f, 40f), Tooltip("컵 재사용 대기(초). 올리면 사용 빈도 감소. 권장 20.")] private float _cupCooldown = 20f;
-        [SerializeField, Range(2f, 16f), Tooltip("청소기 작동(초). 올리면 긴 경로를 청소함. 권장 8.")] private float _vacuumDuration = 8f;
+        [SerializeField, Range(1f, 5f), Tooltip("충전독 주변 무타격 구간(m). 올리면 출발·도착 안전 구간이 넓어짐. 초기값 3.")] private float _vacuumDockSafety = 3f;
         [SerializeField, Range(1f, 6f), Tooltip("청소기 이동 속도(m/s). 올리면 경로 이동이 빨라짐. 권장 3.")] private float _vacuumSpeed = 3f;
         [SerializeField, Range(0.5f, 2f), Tooltip("청소기 타격 반경(m). 올리면 경로 주변도 타격. 권장 1.1.")] private float _vacuumRadius = 1.1f;
         [SerializeField, Range(1, 4), Tooltip("청소기 피해(점). 올리면 쉽게 퇴장시킴. 권장 2.")] private int _vacuumDamage = 2;
@@ -58,12 +65,17 @@ namespace MidnightMouse
         [SerializeField, Range(1f, 10f), Tooltip("미끼 재사용 대기(초). 올리면 미끼 사용 감소. 권장 5.")] private float _baitCooldown = 5f;
         [SerializeField, Range(0.2f, 1.5f), Tooltip("미끼 비행(초). 올리면 착지 지연. 권장 0.5.")] private float _baitFlightTime = 0.5f;
         [SerializeField, Range(2f, 10f), Tooltip("미끼 소음 반경(m). 올리면 더 많은 고양이 유인. 권장 6.")] private float _baitNoiseRadius = 6f;
-        [SerializeField, Range(1f, 6f), Tooltip("미끼 먹는 시간(초). 올리면 함정 사용 여유 증가. 권장 3.")] private float _baitEatTime = 3f;
+        [SerializeField, Range(0.5f, 6f), Tooltip("미끼 먹는 시간(초). 올리면 함정 사용 여유 증가. 초기값 1.5.")] private float _baitEatTime = 1.5f;
         [SerializeField, Range(4f, 20f), Tooltip("남은 미끼 유지(초). 올리면 유인 기회 증가. 권장 10.")] private float _baitLifetime = 10f;
+        [SerializeField, Range(0.1f, 1f), Tooltip("미끼 먹기 시작 거리(m). 올리면 멀리서 먹기 시작. 초기값 0.6.")] private float _baitEatRadius = 0.6f;
+        [SerializeField, Range(0f, 60f), Tooltip("먹기 시작 후 미끼 내성(초). 올리면 연속 유인 어려움. 측정 판 30, 1일째 0.")] private float _baitImmunity = 30f;
+        [SerializeField, Range(1, 10), Tooltip("동시 미끼 풀 크기(개). 올리면 더 많은 미끼 유지. 초기값 3.")] private int _baitPoolSize = 3;
+        [SerializeField, Range(1f, 20f), Tooltip("치즈 흡수 속도(m/s). 올리면 빠르게 회수. 초기값 9.")] private float _pickupSpeed = 9f;
+        [SerializeField, Range(1f, 3f), Tooltip("큰 치즈 크기(배). 올리면 보상을 쉽게 구분. 초기값 1.5.")] private float _bigCheeseScale = 1.5f;
 
         [Header("반복 성장")]
-        [SerializeField, Range(0.02f, 0.25f), Tooltip("소음 성장 1회 감소 비율(배). 올리면 소음 감소 폭 증가. 권장 0.1.")] private float _noiseUpgrade = 0.1f;
-        [SerializeField, Range(0.2f, 0.8f), Tooltip("소음 최소 배율(배). 내리면 반복 성장 후 더 조용함. 권장 0.4.")] private float _minimumNoise = 0.4f;
+        [SerializeField, Range(0.02f, 0.25f), Tooltip("발소리 성장 1회 감소 비율(배). 올리면 소음 감소 폭 증가. 초기값 0.05.")] private float _noiseUpgrade = 0.05f;
+        [SerializeField, Range(0.2f, 0.8f), Tooltip("발소리 최소 배율(배). 내리면 반복 성장 후 더 조용함. 전역 배율과 독립. 초기값 0.6.")] private float _minimumNoise = 0.6f;
         [SerializeField, Range(0.1f, 1f), Tooltip("대시 성장 1회 대기 감소(초). 올리면 빠른 대시 성장. 권장 0.7.")] private float _dashUpgrade = 0.7f;
         [SerializeField, Range(0.5f, 3f), Tooltip("대시 최소 대기(초). 내리면 반복 성장 후 자주 대시. 권장 1.")] private float _minimumDashCooldown = 1f;
 
@@ -88,13 +100,15 @@ namespace MidnightMouse
         public float CatchRest => _catchRest;
         public float RespawnDelay => _respawnDelay;
         public float InteractionRadius => _interactionRadius;
-        public float TrapPreviewDistance => _trapPreviewDistance;
+        public float SwitchPressDuration => _switchPressDuration;
+        public float SwitchNoiseRadius => _switchNoiseRadius;
+        public float SwitchNoiseInterval => _switchNoiseInterval;
         public float CupDelay => _cupDelay;
         public float CupRadius => _cupRadius;
         public int CupDamage => _cupDamage;
         public float CupStun => _cupStun;
         public float CupCooldown => _cupCooldown;
-        public float VacuumDuration => _vacuumDuration;
+        public float VacuumDockSafety => _vacuumDockSafety;
         public float VacuumSpeed => _vacuumSpeed;
         public float VacuumRadius => _vacuumRadius;
         public int VacuumDamage => _vacuumDamage;
@@ -116,6 +130,17 @@ namespace MidnightMouse
         public float MinimumNoise => _minimumNoise;
         public float DashUpgrade => _dashUpgrade;
         public float MinimumDashCooldown => _minimumDashCooldown;
+        public float StageDuration => _stageDuration;
+        public float DawnPerHealth => _dawnPerHealth;
+        public float GlobalNoiseMultiplier => _globalNoiseMultiplier;
+        public float DashSilence => _dashSilence;
+        public float RetreatTimeout => _retreatTimeout;
+        public float CatAcceleration => _catAcceleration;
+        public float BaitEatRadius => _baitEatRadius;
+        public float BaitImmunity => _baitImmunity;
+        public int BaitPoolSize => _baitPoolSize;
+        public float PickupSpeed => _pickupSpeed;
+        public float BigCheeseScale => _bigCheeseScale;
 
         /// <summary>경과 시간에 맞는 단계별 고양이 수를 구한다.</summary>
         public int GetCatCount(float elapsed)

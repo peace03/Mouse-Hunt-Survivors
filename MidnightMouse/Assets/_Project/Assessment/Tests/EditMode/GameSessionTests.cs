@@ -6,6 +6,29 @@ namespace MidnightMouse.Tests
     /// <summary>순수 세션 규칙의 상태 전이와 경계값을 검증한다.</summary>
     public sealed class GameSessionTests
     {
+        /// <summary>준비 중에는 시간·피해·보상이 멈추며 시작 입력으로만 진행한다.</summary>
+        [Test]
+        public void ReadyRejectsGameplayUntilBeginPlay()
+        {
+            var session = new GameSession();
+            session.BeginPlay();
+            Assert.That(session.Phase, Is.EqualTo(GamePhase.Title));
+            session.Start(waitForInput: true);
+            session.Tick(100f);
+            session.AdvanceClock(100f);
+            session.CollectCheese(10);
+            session.TogglePause();
+            Assert.That(session.TryDamage(), Is.False);
+            Assert.That(session.Phase, Is.EqualTo(GamePhase.Ready));
+            Assert.That(session.Elapsed, Is.Zero);
+            Assert.That(session.RealElapsed, Is.Zero);
+            Assert.That(session.CheeseCollected, Is.Zero);
+            session.BeginPlay();
+            session.Tick(1f);
+            session.BeginPlay();
+            Assert.That(session.Elapsed, Is.EqualTo(1f));
+        }
+
         /// <summary>시작 전에는 시간이 흐르지 않으며 시작하면 초기 상태가 설정된다.</summary>
         [Test]
         public void TitleDoesNotAdvanceAndStartInitializesRun()

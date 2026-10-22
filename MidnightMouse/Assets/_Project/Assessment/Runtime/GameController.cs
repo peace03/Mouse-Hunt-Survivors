@@ -9,7 +9,7 @@ namespace MidnightMouse
     /// <summary>게임 루트에서 세션과 명시적으로 연결한 개체들의 진행 시간을 관리한다.</summary>
     [DefaultExecutionOrder(-100)]
     [RequireComponent(typeof(GameAudio))]
-    public sealed class GameController : MonoBehaviour
+    public sealed partial class GameController : MonoBehaviour
     {
         [SerializeField, Tooltip("이 스테이지가 공유할 생존·고양이·함정·성장 수치 에셋.")] private AssessmentRules _rules;
         [SerializeField, Tooltip("플레이어 루트의 MouseController.")] private MouseController _player;
@@ -27,7 +27,16 @@ namespace MidnightMouse
         [SerializeField, Tooltip("짧은 대시 키.")] private Key _dashKey = Key.Space;
         [SerializeField, Tooltip("가까운 함정을 사용하는 키.")] private Key _interactKey = Key.E;
         [SerializeField, Tooltip("일시정지와 재개 키.")] private Key _pauseKey = Key.Escape;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        [SerializeField, Tooltip("다음 단계 시작으로 게임 시계를 옮기는 디버그 키.")] private Key _nextStageKey = Key.F1;
+        [SerializeField, Tooltip("게임 시계를 30초 옮기는 디버그 키.")] private Key _advanceClockKey = Key.F2;
+        [SerializeField, Tooltip("모든 고양이를 정상 보상과 함께 퇴장시키는 디버그 키.")] private Key _banishAllKey = Key.F3;
+        [SerializeField, Tooltip("판 CSV 시나리오. loop, corner, switch 중 측정할 항목을 적음.")] private string _measurementScenario = "loop";
+        private RunMeasurement _measurement;
+        private string _deathCause = "";
+#endif
 
+        private float _deferredDawn = -1f;
         private GameSession _session;
         private GameAudio _audio;
         private CheeseBait[] _baits;
@@ -41,10 +50,19 @@ namespace MidnightMouse
         private bool _hintReady;
         private bool _hintActive;
         private bool _initialized;
+        private bool _startInputArmed;
+        private int _startedFrame = -1;
+        public bool StartedThisFrame => _startedFrame == Time.frameCount;
 
         public GamePhase Phase => _session == null ? GamePhase.Title : _session.Phase;
         public float Elapsed => _session == null ? 0f : _session.Elapsed;
-        public float Duration => _rules == null ? 300f : _rules.Duration;
+        public float RealElapsed => _session == null ? 0f : _session.RealElapsed;
+        public int Stage => _rules == null ? 1 : Mathf.Clamp(1 + Mathf.FloorToInt(Elapsed / StageSeconds), 1, 5);
+        public float LastDawnAdvance { get; private set; }
+        public float DawnNoticeUntil { get; private set; }
+        public string DebugNotice { get; private set; } = "";
+        public float DebugNoticeUntil { get; private set; }
+        public float Duration => CurrentNight != null ? CurrentNight.Duration : _rules == null ? 300f : _rules.Duration;
         public int Hearts => _session == null ? 0 : _session.Hearts;
         public int MaxHearts => _session == null ? 0 : _session.MaxHearts;
         public int CheeseCollected => _session == null ? 0 : _session.CheeseCollected;
@@ -73,14 +91,14 @@ namespace MidnightMouse
                 enabled = false;
                 return;
             }
-            _session = new GameSession(_rules.Duration, _rules.StartingHearts, _rules.Invulnerability,
-                _rules.BaseExperience, _rules.ExperienceStep, _rules.HeartCap);
+            InitializeCampaign();
+            _session = CreateSession();
             _audio = GetComponent<GameAudio>();
             _player.Initialize(this, _worldCamera);
             for (int index = 0; index < _cats.Length; index++) _cats[index].Initialize(this, _patrolPoints, index);
             foreach (TrapController trap in _traps) trap.Initialize(this);
             foreach (CheesePickup pickup in _pickups) pickup.Initialize(this);
-            _baits = new CheeseBait[3];
+            _baits = new CheeseBait[_rules.BaitPoolSize];
             for (int index = 0; index < _baits.Length; index++)
             {
                 var baitObject = new GameObject("미끼 치즈 풀 " + index);
@@ -91,6 +109,15 @@ namespace MidnightMouse
             _aimRing = RadiusRing.Create(transform, "미끼 착지 조준", new Color(1f, 0.8f, 0.25f), 0.05f);
             _aimRing.SetAppearance(0.32f, Color.yellow, false);
             _lastPhase = GamePhase.Title;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            string[] arguments = System.Environment.GetCommandLineArgs();
+            int scenarioIndex = System.Array.IndexOf(arguments, "--m0-scenario");
+            if (scenarioIndex >= 0 && scenarioIndex + 1 < arguments.Length)
+            {
+                string scenario = arguments[scenarioIndex + 1];
+                if (scenario == "loop" || scenario == "corner" || scenario == "switch") _measurementScenario = scenario;
+            }
+#endif
             _initialized = true;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
@@ -101,8 +128,25 @@ namespace MidnightMouse
         {
             if (!_initialized) return;
             Keyboard keyboard = Keyboard.current;
+            if (Phase == GamePhase.Ready)
+            {
+                if (keyboard == null || !keyboard.anyKey.isPressed) _startInputArmed = true;
+                if (_startInputArmed && keyboard != null && keyboard.anyKey.wasPressedThisFrame) ConfirmStart();
+                return;
+            }
             if (Phase != GamePhase.Playing) { SyncPhase(); return; }
             float delta = Time.deltaTime;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (keyboard != null)
+            {
+                if (keyboard[_nextStageKey].wasPressedThisFrame) DebugAdvance(0);
+                if (keyboard[_advanceClockKey].wasPressedThisFrame) DebugAdvance(1);
+                if (keyboard[_banishAllKey].wasPressedThisFrame) DebugAdvance(2);
+                if (Phase != GamePhase.Playing) { SyncPhase(); return; }
+            }
+            foreach (var cat in _cats)
+                if (cat.IsAvailable && cat.State == CatState.Chase) { _measurement?.AddChaseTime(delta); break; }
+#endif
             Vector2 movement = Vector2.zero;
             bool sneak = false, run = false, dash = false;
             if (keyboard != null)
@@ -134,11 +178,14 @@ namespace MidnightMouse
                 pickup.Tick(delta);
             }
             // 같은 프레임의 마지막 피격을 먼저 반영해 패배가 생존 승리로 덮이지 않게 한다.
+            float beforeClock = Elapsed;
             _session.Tick(delta);
             if (Phase == GamePhase.Playing)
             {
+                AdvanceCrumbs(Elapsed - beforeClock);
                 UpdatePopulation(delta);
                 UpdateHint();
+                UpdateFirstGuide();
             }
             SyncPhase();
         }
@@ -147,19 +194,38 @@ namespace MidnightMouse
         public void StartRun()
         {
             if (!_initialized) return;
-            _session.Start();
+            FinishMeasurement("restart");
+            if (_session == null || _session.Duration != Duration) _session = CreateSession();
+            _session.Start(waitForInput: true);
+            _startedFrame = -1;
+            _startInputArmed = Keyboard.current == null || !Keyboard.current.anyKey.isPressed;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            _measurement = new RunMeasurement(System.Guid.NewGuid().ToString("N"), CurrentNight != null ? CurrentNight.Id : "M0-day2-approx", Application.isBatchMode ? "automated" : _measurementScenario);
+            _deathCause = "";
+#endif
+            LastDawnAdvance = DawnNoticeUntil = DebugNoticeUntil = 0f;
+            DebugNotice = "";
             _player.ResetRun();
             _baitCooldown = _reinforcementTimer = 0f;
             _cheeseTimer = _rules.CheeseInterval;
-            _enteredCats = Mathf.Min(_rules.GetCatCount(0f), _cats.Length);
             foreach (CheesePickup pickup in _pickups) pickup.ResetRun();
             foreach (CheeseBait bait in _baits) bait.ResetRun();
             foreach (TrapController trap in _traps) trap.ResetRun();
-            for (int index = 0; index < _cats.Length; index++) _cats[index].SetAvailable(index < _enteredCats);
+            ResetNightActors();
             for (int index = 0; index < _rules.InitialCrumbs; index++) SpawnCrumb();
             CurrentHint = "달리면 빨라지지만 고양이가 소음을 듣습니다. 함정의 노란 원에서 E.";
             _hintTrap = null;
             _hintReady = _hintActive = false;
+            SyncPhase();
+        }
+
+        /// <summary>첫 키 입력을 소비하고 시간·이동·안내를 함께 시작한다.</summary>
+        public void ConfirmStart()
+        {
+            if (Phase != GamePhase.Ready) return;
+            _session.BeginPlay();
+            _startedFrame = Time.frameCount;
+            ShowGuide(1, "WASD 이동 · Ctrl 살금살금 · 발밑 원이 소리 범위");
             SyncPhase();
         }
 
@@ -178,6 +244,7 @@ namespace MidnightMouse
         public void ReturnToTitle()
         {
             if (!_initialized) return;
+            FinishMeasurement("title");
             _session.ReturnToTitle();
             SyncPhase();
         }
@@ -211,7 +278,7 @@ namespace MidnightMouse
         {
             switch (index)
             {
-                case 0: return "이동 소음 반경 −10%\n최소 40%까지 감소";
+                case 0: return $"발소리 배율 −{_rules.NoiseUpgrade:P0}\n최소 {_rules.MinimumNoise:P0} · 잔상에는 영향 없음";
                 case 1: return "대시 대기 −0.7초\n최소 1초까지 감소";
                 case 2: return "최대 하트 +1, 하트 1 회복\n최대 5하트 · 상한에서도 회복";
                 default: return "";
@@ -242,9 +309,13 @@ namespace MidnightMouse
         }
 
         /// <summary>진행 중 유효한 피격만 체력·반동·효과음으로 반영한다.</summary>
-        public bool TryDamagePlayer(Vector3 source)
+        public bool TryDamagePlayer(Vector3 source, CatState sourceState = CatState.Chase)
         {
             if (!_initialized || !_session.TryDamage()) return false;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (Phase == GamePhase.Lost) _deathCause = "Curious:" + sourceState;
+#endif
+            RecordMeasurement("player_hit", "Curious:" + sourceState);
             _player.KnockBack(source);
             PlaySound(GameSound.Hit);
             SyncPhase();
@@ -261,10 +332,10 @@ namespace MidnightMouse
         }
 
         /// <summary>실제 소음 이벤트 때만 고양이 풀에 감지 여부를 전달한다.</summary>
-        public void EmitNoise(Vector3 point, float radius, CheeseBait bait = null)
+        public void EmitNoise(Vector3 point, float radius, NoiseKind kind = NoiseKind.Normal, bool fromPlayer = false, CheeseBait bait = null)
         {
             if (Phase != GamePhase.Playing || radius <= 0f) return;
-            foreach (CatController cat in _cats) cat.ReceiveNoise(point, radius, bait);
+            foreach (CatController cat in _cats) cat.ReceiveNoise(point, radius, kind, fromPlayer, bait);
         }
 
         /// <summary>고양이 퇴장 위치에 큰 치즈를 떨어뜨리고 퇴장 수를 기록한다.</summary>
@@ -273,6 +344,24 @@ namespace MidnightMouse
             if (Phase != GamePhase.Playing) return;
             _session.RegisterBanished();
             SpawnPickup(position, experience, _rules.BigCheeseLifetime);
+            LastDawnAdvance = Mathf.Min(Duration - Elapsed, experience * _rules.DawnPerHealth);
+            DawnNoticeUntil = Time.unscaledTime + 1.6f;
+            if (_deferredDawn >= 0f) { _deferredDawn += experience * _rules.DawnPerHealth; return; }
+            AdvanceGameClock(experience * _rules.DawnPerHealth);
+            PlaySound(GameSound.Trap);
+        }
+
+        /// <summary>동시에 맞는 대상의 부탁·퇴장을 모두 기록한 뒤 아침을 정산한다.</summary>
+        public void BeginTrapHits() => _deferredDawn = 0f;
+
+        /// <summary>한 타격 묶음의 시간 보상을 한 번 적용한다.</summary>
+        public void EndTrapHits()
+        {
+            float seconds = _deferredDawn;
+            _deferredDawn = -1f;
+            if (seconds <= 0f) return;
+            LastDawnAdvance = Mathf.Min(Duration - Elapsed, seconds);
+            AdvanceGameClock(seconds);
             PlaySound(GameSound.Trap);
         }
 
@@ -283,19 +372,35 @@ namespace MidnightMouse
         }
 
         /// <summary>단계별 증원과 부스러기 생성 주기를 진행한다.</summary>
-        private void UpdatePopulation(float delta)
+        private void AdvanceCrumbs(float seconds)
         {
-            _cheeseTimer -= delta;
-            if (_cheeseTimer <= 0f)
+            _cheeseTimer -= seconds;
+            while (_cheeseTimer <= 0f)
             {
-                _cheeseTimer = _rules.CheeseInterval;
+                _cheeseTimer += _rules.CheeseInterval;
                 SpawnCrumb();
             }
+        }
+
+        /// <summary>게임 시계로 증원 목표를 고르고 실제 시간으로 입장을 분산한다.</summary>
+        private void UpdatePopulation(float delta)
+        {
+            foreach (var cat in _cats) cat.ApplyStageRules();
             _reinforcementTimer = Mathf.Max(0f, _reinforcementTimer - delta);
             int desired = Mathf.Min(_rules.GetCatCount(Elapsed), _cats.Length);
+            if (CurrentNight != null)
+            {
+                if (_reinforcementTimer > 0f) return;
+                CatDefinition missing = MissingKind();
+                if (missing == null) return;
+                EnterCat(missing);
+                _reinforcementTimer = _rules.ReinforcementInterval;
+                PlaySound(GameSound.Alert);
+                return;
+            }
             if (_enteredCats < desired && _reinforcementTimer <= 0f)
             {
-                _cats[_enteredCats++].SetAvailable(true);
+                EnterCat(null);
                 _reinforcementTimer = _rules.ReinforcementInterval;
                 PlaySound(GameSound.Alert);
             }
@@ -390,6 +495,8 @@ namespace MidnightMouse
             _hintReady = ready;
             _hintActive = active;
             if (trap == null) CurrentHint = "소음으로 고양이를 유인하세요. 노란 원 근처에서 E로 함정을 사용합니다.";
+            else if (!trap.IsNightEnabled) CurrentHint = "청소기 충전 중 · 2일째부터 사용할 수 있습니다.";
+            else if (trap.IsPressing) CurrentHint = "스위치 누르는 중 · 움직이면 취소됩니다.";
             else if (trap.IsReady) CurrentHint = trap.Kind == TrapKind.Cup ? "E  컵 떨어뜨리기 · 큰 원 안으로 고양이를 유인하세요" : "E  청소기 작동 · 표시된 경로 위로 고양이를 유인하세요";
             else if (trap.IsActive) CurrentHint = "함정이 작동 중입니다. 다음 유인 위치로 이동하세요.";
             else CurrentHint = "함정 충전 중 · 원이 노란색이 되면 다시 사용할 수 있습니다.";
@@ -406,6 +513,78 @@ namespace MidnightMouse
             if (!running) _aimRing.SetAppearance(0.32f, Color.yellow, false);
             if (Phase == GamePhase.Won) PlaySound(GameSound.Win);
             else if (Phase == GamePhase.Lost) PlaySound(GameSound.Lose);
+            if (Phase == GamePhase.Won || Phase == GamePhase.Lost)
+            {
+                FinishCampaign();
+                FinishMeasurement(Phase == GamePhase.Won ? "won" : "lost");
+            }
         }
+
+        /// <summary>게임 시계 변화량만 부스러기와 단계에 전달한다.</summary>
+        private void AdvanceGameClock(float seconds)
+        {
+            float before = Elapsed;
+            _session.AdvanceClock(seconds);
+            AdvanceCrumbs(Elapsed - before);
+            if (Phase == GamePhase.Playing) UpdatePopulation(0f);
+        }
+
+        /// <summary>출시 빌드에서는 호출과 사건 문자열 생성까지 제외한다.</summary>
+        [System.Diagnostics.Conditional("UNITY_EDITOR"), System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+        public void RecordMeasurement(string kind, string detail)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            _measurement?.Record(RealElapsed, kind, detail);
+#endif
+        }
+
+        /// <summary>판 종료 시 기록을 로컬 CSV에 남기고 쓰기 실패를 명시한다.</summary>
+        [System.Diagnostics.Conditional("UNITY_EDITOR"), System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+        private void FinishMeasurement(string outcome)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (_measurement == null || _session == null) return;
+            foreach (var trap in _traps) if (trap != null) trap.RecordPendingActivation();
+            foreach (var cat in _cats) if (cat != null) cat.RecordPendingChase();
+            string row = _measurement.Finish(_session, outcome, _deathCause);
+            if (row == null) return;
+            string path = System.IO.Path.Combine(Application.persistentDataPath, "Measurements", "m0-runs-v1.csv");
+            try
+            {
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+                bool header = !System.IO.File.Exists(path) || new System.IO.FileInfo(path).Length == 0;
+                System.IO.File.AppendAllText(path, (header ? RunMeasurement.Header + "\n" : "") + row + "\n", new System.Text.UTF8Encoding(false));
+            }
+            catch (System.IO.IOException exception) { Debug.LogError("판 CSV 저장 실패: " + path + " / " + exception.Message); }
+            catch (System.UnauthorizedAccessException exception) { Debug.LogError("판 CSV 저장 권한 없음: " + path + " / " + exception.Message); }
+#endif
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        /// <summary>예약된 디버그 입력도 정상 시간·퇴장·보상 경로로 실행한다.</summary>
+        public void DebugAdvance(int action)
+        {
+            if (Phase != GamePhase.Playing || action < 0 || action > 2) return;
+            RecordMeasurement("debug", "F" + (action + 1));
+            if (action == 0) AdvanceGameClock(Stage * StageSeconds - Elapsed);
+            else if (action == 1) AdvanceGameClock(30f);
+            else
+            {
+                // 마지막 고양이까지 정상 보상을 준 뒤 아침 도달을 판정한다.
+                BeginTrapHits();
+                foreach (var cat in _cats) if (cat.CanReceiveHit) cat.ApplyTrapHit(cat.Health, 0f, Vector3.zero);
+                EndTrapHits();
+            }
+            DebugNotice = action == 0 ? "디버그: 단계 " + Stage : action == 1 ? "디버그: 게임 시계 +30초" : "디버그: 모든 고양이 퇴장";
+            DebugNoticeUntil = Time.unscaledTime + 2f;
+            SyncPhase();
+        }
+#endif
+
+        /// <summary>앱 종료로 중단된 판도 한 번만 기록한다.</summary>
+        private void OnApplicationQuit() => FinishMeasurement("quit");
+
+        /// <summary>씬 교체 중 진행하던 판을 기록한다.</summary>
+        private void OnDestroy() => FinishMeasurement("scene_unload");
     }
 }

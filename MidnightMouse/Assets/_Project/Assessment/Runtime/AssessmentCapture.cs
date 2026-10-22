@@ -6,6 +6,8 @@ using System.Reflection;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Rendering;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 
 namespace MidnightMouse
 {
@@ -119,13 +121,14 @@ namespace MidnightMouse
         {
             // 개발 빌드의 화면 검사에만 사용하며 게임 수치와 제출 영상 프레임은 바꾸지 않는다.
             var field = typeof(GameController).GetField("_session", BindingFlags.NonPublic | BindingFlags.Instance);
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             var session = (GameSession)field.GetValue(_game);
             session.Tick(_game.Duration);
             yield return new WaitForSecondsRealtime(0.3f);
             yield return new WaitForEndOfFrame();
             SaveResult("result_won.png", GamePhase.Won);
-            _game.RestartRun();
+            _game.RestartRun(); _game.ConfirmStart();
+            session = (GameSession)field.GetValue(_game);
             while (session.Hearts > 0)
             {
                 session.TryDamage();
@@ -174,7 +177,7 @@ namespace MidnightMouse
             if (_frame < CaptureRate * 9) return;
             if (_game.Phase == GamePhase.Title)
             {
-                _game.StartRun();
+                _game.StartRun(); _game.ConfirmStart();
                 _lastPosition = _game.Player.transform.position;
                 _nextDecision = 0;
             }
@@ -193,7 +196,7 @@ namespace MidnightMouse
                 _resultHold += 1f / CaptureRate;
                 if (_resultHold > 4.5f)
                 {
-                    _game.RestartRun();
+                    _game.RestartRun(); _game.ConfirmStart();
                     _resultHold = 0f;
                     _nextDecision = 0;
                 }
@@ -210,6 +213,8 @@ namespace MidnightMouse
                 _pausedForDemo = false;
             }
             if (_game.Phase != GamePhase.Playing) return;
+            foreach (var trap in _traps)
+                if (trap.IsPressing) { _game.Player.SetDemoInput(Vector2.zero, false, false, false); return; }
             Vector3 position = _game.Player.transform.position;
             if ((position - _lastPosition).sqrMagnitude < 0.001f) _stuckTime += 1f / CaptureRate;
             else _stuckTime = 0f;
@@ -229,7 +234,12 @@ namespace MidnightMouse
             Vector3 direction = destination - position; direction.y = 0f;
             if (direction.sqrMagnitude < 0.4f)
             {
-                _game.TryUseNearestTrap();
+                if (_game.TryUseNearestTrap())
+                {
+                    _game.Player.SetDemoInput(Vector2.zero, false, false, false);
+                    _nextDecision = 0;
+                    return;
+                }
                 _nextDecision = 0;
             }
             Vector3 forward = _camera.transform.forward; forward.y = 0; forward.Normalize();
@@ -240,12 +250,16 @@ namespace MidnightMouse
             _game.Player.SetDemoInput(move, sneak, !sneak, _frame % (CaptureRate * 7) == 0);
             if (_frame % (CaptureRate * 6) == 0 && _traps.Length > 0)
                 _game.TryThrowBait(_traps[_trapIndex % _traps.Length].EffectPosition);
-            _game.TryUseNearestTrap();
         }
 
         /// <summary>빌드된 Player에서 설정 적용·재실행 복원·실제 종료 버튼을 검사한다.</summary>
         private IEnumerator CheckMenusInPlayer()
         {
+            // 시연의 안내·별 기록은 사용자 진행 파일과 분리한다.
+            typeof(GameController).GetField("_campaignStore", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_game, new CampaignStore(Path.Combine(_output, "campaign-fixture.json")));
+            typeof(GameController).GetField("<Progress>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_game, new CampaignProgress());
             string backup = Path.Combine(_output, "original-settings.json");
             if (!_reloadCheck)
             {
@@ -280,6 +294,20 @@ namespace MidnightMouse
             Require(Mathf.Abs(PlayerPrefs.GetFloat(VolumeKey) - 0.37f) < 0.001f && PlayerPrefs.GetInt(ScreenKey) == 0, "닫을 때 설정 저장");
             ClickMenuButton("StartButton");
             yield return new WaitForSecondsRealtime(0.2f);
+            SaveMenuFrame("night-selection.png");
+            ClickMenuButton("NightButton1");
+            yield return new WaitForSecondsRealtime(0.2f);
+            SaveMenuFrame("intro.png");
+            var keyboard = Keyboard.current;
+            bool addedKeyboard = keyboard == null;
+            if (addedKeyboard) keyboard = InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape));
+            yield return null;
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+            yield return new WaitForSecondsRealtime(0.2f);
+            if (addedKeyboard) InputSystem.RemoveDevice(keyboard);
+            Require(_game.Phase == GamePhase.Playing, "밤 선택과 인트로 뒤 실제 시작");
+            SaveMenuFrame("night-one-hud.png");
             ClickMenuButton("PauseButton");
             yield return new WaitForSecondsRealtime(0.2f);
             Require(_game.Phase == GamePhase.Paused, "실제 Player 일시정지");

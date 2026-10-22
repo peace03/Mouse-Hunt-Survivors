@@ -18,6 +18,7 @@ namespace MidnightMouse.Tests
         private InputTestFixture _input;
         private GameController _game;
         private Keyboard _keyboard;
+        private string _campaignTestPath;
 
         /// <summary>각 시나리오는 새 씬과 독립 입력 장치에서 시작한다.</summary>
         [UnitySetUp]
@@ -32,6 +33,9 @@ namespace MidnightMouse.Tests
             yield return null;
             _game = Object.FindFirstObjectByType<GameController>();
             Assert.That(_game, Is.Not.Null, "제출 씬의 GameController 연결");
+            _campaignTestPath = System.IO.Path.Combine(Application.temporaryCachePath, "CampaignTests", System.Guid.NewGuid().ToString("N") + ".json");
+            typeof(GameController).GetField("_campaignStore", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_game, new CampaignStore(_campaignTestPath));
+            typeof(GameController).GetField("<Progress>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_game, new CampaignProgress());
             Assert.That(Keyboard.current, Is.SameAs(_keyboard), "씬과 시험이 같은 입력 장치를 사용");
             Assert.That(InputSystem.GetDeviceById(_keyboard.deviceId), Is.SameAs(_keyboard));
         }
@@ -45,6 +49,7 @@ namespace MidnightMouse.Tests
             _keyboard = null;
             _input?.TearDown();
             _input = null;
+            foreach (string suffix in new[] { "", ".bak", ".tmp" }) if (System.IO.File.Exists(_campaignTestPath + suffix)) System.IO.File.Delete(_campaignTestPath + suffix);
             yield return null;
             LogAssert.NoUnexpectedReceived();
         }
@@ -69,6 +74,19 @@ namespace MidnightMouse.Tests
             Assert.That(_keyboard.enterKey.isPressed, Is.True, "PlayerLoop가 Enter 누름을 처리");
             InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
             yield return new WaitForSecondsRealtime(0.2f);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Title));
+            GameObject.Find("NightButton1").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.Escape));
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+            yield return new WaitForSecondsRealtime(0.2f);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Ready));
+            Assert.That(_game.Elapsed, Is.Zero);
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.Enter));
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+            yield return new WaitForSecondsRealtime(0.2f);
             Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
             Assert.That(_game.Hearts, Is.EqualTo(3));
             Assert.That(GameObject.Find("Hearts").GetComponent<TMPro.TMP_Text>().text, Does.Contain("♥♥♥"));
@@ -79,7 +97,7 @@ namespace MidnightMouse.Tests
         [UnityTest]
         public IEnumerator KeyboardMovementAndPauseFreezeTogether()
         {
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             Vector3 start = _game.Player.transform.position;
             InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.W));
             yield return new WaitForSeconds(0.25f);
@@ -99,7 +117,7 @@ namespace MidnightMouse.Tests
         [UnityTest]
         public IEnumerator CheeseUpgradeAndRestartResetState()
         {
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             UnityEngine.UI.Button heartChoice = null;
             foreach (var button in Object.FindFirstObjectByType<GameHud>().GetComponentsInChildren<UnityEngine.UI.Button>(true))
                 if (button.name == "ChooseButton" && button.transform.parent.name == "UpgradeCard3") heartChoice = button;
@@ -123,7 +141,7 @@ namespace MidnightMouse.Tests
             heartChoice.onClick.Invoke();
             Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
             Assert.That(_game.MaxHearts, Is.EqualTo(4));
-            _game.RestartRun();
+            _game.RestartRun(); _game.ConfirmStart();
             Assert.That(_game.Level, Is.EqualTo(1));
             Assert.That(_game.CheeseCollected, Is.Zero);
             Assert.That(_game.Hearts, Is.EqualTo(3));
@@ -134,7 +152,7 @@ namespace MidnightMouse.Tests
         [UnityTest]
         public IEnumerator BaitCooldownCannotBeBypassedByPause()
         {
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             Vector3 aim = _game.Player.transform.position + Vector3.forward * 3f;
             Assert.That(_game.TryThrowBait(aim), Is.True);
             Assert.That(_game.TryThrowBait(aim), Is.False);
@@ -151,7 +169,7 @@ namespace MidnightMouse.Tests
         [UnityTest]
         public IEnumerator CupDropsOnCatAndRejectsRepeatedActivation()
         {
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             TrapController cup = null;
             foreach (var trap in Object.FindObjectsByType<TrapController>(FindObjectsSortMode.None))
                 if (trap.Kind == TrapKind.Cup) cup = trap;
@@ -170,7 +188,7 @@ namespace MidnightMouse.Tests
             int before = cat.Health;
             Assert.That(_game.TryUseNearestTrap(), Is.True);
             Assert.That(_game.TryUseNearestTrap(), Is.False);
-            yield return new WaitForSeconds(0.7f);
+            yield return new WaitForSeconds(1.2f);
             Assert.That(cat.Health, Is.EqualTo(before - 2));
             Assert.That(cup.CooldownRemaining, Is.GreaterThan(18f));
         }
@@ -179,7 +197,7 @@ namespace MidnightMouse.Tests
         [UnityTest]
         public IEnumerator NoiseChangesCatState()
         {
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             CatController cat = null;
             foreach (var candidate in Object.FindObjectsByType<CatController>(FindObjectsSortMode.None))
                 if (candidate.IsAvailable) { cat = candidate; break; }
@@ -193,7 +211,7 @@ namespace MidnightMouse.Tests
         [UnityTest]
         public IEnumerator VacuumMovesHitsEachCatOnceAndResetsAfterPause()
         {
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             TrapController vacuum = null;
             foreach (var trap in _game.Traps)
                 if (trap.Kind == TrapKind.Vacuum) vacuum = trap;
@@ -204,15 +222,20 @@ namespace MidnightMouse.Tests
             Vector3 playerStart = _game.Player.transform.position;
             Vector3 vacuumStart = vacuum.EffectPosition;
             int startingHealth = cat.Health;
+            _game.enabled = false;
 
             // 고양이 위치만 시험용으로 배치하고 타격은 실제 청소기 Tick에서 발생시킨다.
             MovePlayerFixture(vacuum.transform.position);
             MoveCatToVacuumFixture(cat, vacuum);
             Assert.That(_game.TryUseNearestTrap(), Is.True);
             Assert.That(_game.TryUseNearestTrap(), Is.False);
+            Assert.That(vacuum.IsPressing, Is.True);
+            vacuum.Tick(0.5f);
             Assert.That(vacuum.IsActive, Is.True);
             MovePlayerFixture(playerStart);
-            yield return null;
+            vacuum.Tick(1.2f);
+            MoveCatToVacuumFixture(cat, vacuum);
+            vacuum.Tick(0.02f);
             Assert.That(cat.Health, Is.EqualTo(startingHealth - 2), "청소기의 실제 접촉 피해");
             Assert.That(cat.CanReceiveHit, Is.True, "퇴장 무적이 중복 타격 실패를 가리지 않음");
 
@@ -220,10 +243,10 @@ namespace MidnightMouse.Tests
             {
                 // 밀려난 고양이를 다시 닿게 해 같은 작동의 중복 타격 방지를 검증한다.
                 MoveCatToVacuumFixture(cat, vacuum);
-                yield return null;
+                vacuum.Tick(0.02f);
                 Assert.That(cat.Health, Is.EqualTo(startingHealth - 2), "같은 고양이는 한 작동에 한 번만 타격");
             }
-            yield return new WaitForSeconds(0.3f);
+            vacuum.Tick(0.3f);
             Assert.That(Vector3.Distance(vacuumStart, vacuum.EffectPosition), Is.GreaterThan(0.3f), "충전독에서 실제 경로 이동");
             Assert.That(vacuum.CooldownRemaining, Is.GreaterThan(0f).And.LessThan(25f));
             Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
@@ -232,12 +255,13 @@ namespace MidnightMouse.Tests
             Vector3 pausedVacuum = vacuum.EffectPosition;
             float pausedCooldown = vacuum.CooldownRemaining;
             float pausedElapsed = _game.Elapsed;
+            vacuum.Tick(10f);
             yield return new WaitForSecondsRealtime(0.2f);
             Assert.That(Vector3.Distance(pausedVacuum, vacuum.EffectPosition), Is.LessThan(0.001f));
             Assert.That(vacuum.CooldownRemaining, Is.EqualTo(pausedCooldown));
             Assert.That(_game.Elapsed, Is.EqualTo(pausedElapsed));
 
-            _game.RestartRun();
+            _game.RestartRun(); _game.ConfirmStart();
             Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
             Assert.That(vacuum.IsActive, Is.False);
             Assert.That(vacuum.IsReady, Is.True);
@@ -249,8 +273,11 @@ namespace MidnightMouse.Tests
             MovePlayerFixture(vacuum.transform.position);
             MoveCatToVacuumFixture(cat, vacuum);
             Assert.That(_game.TryUseNearestTrap(), Is.True);
+            vacuum.Tick(0.5f);
             MovePlayerFixture(playerStart);
-            yield return null;
+            vacuum.Tick(1.2f);
+            MoveCatToVacuumFixture(cat, vacuum);
+            vacuum.Tick(0.02f);
             Assert.That(cat.Health, Is.EqualTo(startingHealth - 2), "재시작하면 이전 작동의 타격 기록도 초기화");
         }
 
@@ -258,7 +285,7 @@ namespace MidnightMouse.Tests
         [UnityTest]
         public IEnumerator TerminalSessionFixturesShowCorrectResultAndRetryWorks()
         {
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             FieldInfo field = typeof(GameController).GetField("_session", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, "UI 상태를 준비할 시험용 세션 접근");
             var session = (GameSession)field.GetValue(_game);
@@ -275,10 +302,15 @@ namespace MidnightMouse.Tests
             var retry = GameObject.Find("RetryButton").GetComponent<UnityEngine.UI.Button>();
             Assert.That(retry.interactable, Is.True);
             retry.onClick.Invoke();
-            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Ready));
             Assert.That(_game.Elapsed, Is.Zero);
             yield return new WaitForSecondsRealtime(0.2f);
             Assert.That(result.activeInHierarchy, Is.False);
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.Enter));
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+            yield return null;
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
 
             // 무적 종료만 순수 세션에서 진행하고 세 번의 실제 피해 규칙으로 패배를 만든다.
             Assert.That(session.TryDamage(), Is.True);
@@ -294,9 +326,14 @@ namespace MidnightMouse.Tests
             Assert.That(GameObject.Find("ResultBody").GetComponent<TMPro.TMP_Text>().text, Does.Contain("쥐구멍으로 몸을 숨겼습니다"));
             Assert.That(GameObject.Find("UpgradeScreen"), Is.Null);
             retry.onClick.Invoke();
-            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Ready));
             Assert.That(_game.Hearts, Is.EqualTo(3));
             Assert.That(_game.Elapsed, Is.Zero);
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState(Key.Enter));
+            yield return null;
+            InputSystem.QueueStateEvent(_keyboard, new KeyboardState());
+            yield return null;
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
         }
 
         /// <summary>제목의 설정·종료 창이 Enter와 Esc를 먼저 받아 뒤쪽 게임을 시작하지 않는지 확인한다.</summary>
@@ -349,7 +386,7 @@ namespace MidnightMouse.Tests
             FullScreenMode originalMode = Screen.fullScreenMode;
             try
             {
-                _game.StartRun();
+                _game.StartRun(); _game.ConfirmStart();
                 _game.TogglePause();
                 yield return new WaitForSecondsRealtime(0.2f);
                 MenuButton("PauseSettingsButton").onClick.Invoke();
@@ -413,7 +450,7 @@ namespace MidnightMouse.Tests
             var settings = MenuButton("TitleSettingsButton");
             var quit = MenuButton("TitleQuitButton");
             var help = MenuButton("HelpButton");
-            _game.StartRun();
+            _game.StartRun(); _game.ConfirmStart();
             settings.onClick.Invoke();
             quit.onClick.Invoke();
             help.onClick.Invoke();

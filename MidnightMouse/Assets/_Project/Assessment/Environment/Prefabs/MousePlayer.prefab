@@ -75,7 +75,7 @@ MonoBehaviour:
   _visual: {fileID: 6661452372913802412}
   _sneakSpeed: 2
   _walkSpeed: 4
-  _runSpeed: 6.5
+  _runSpeed: 5.5
   _sneakNoise: 2
   _walkNoise: 5
   _runNoise: 9

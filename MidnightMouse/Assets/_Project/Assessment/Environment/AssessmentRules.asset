@@ -19,7 +19,12 @@ MonoBehaviour:
   _baseExperience: 4
   _experienceStep: 2
   _stageDuration: 60
-  _catsPerStage: 0200000003000000040000000600000007000000i
+  _catsPerStage: 0200000002000000030000000300000004000000
+  _dawnPerHealth: 2
+  _globalNoiseMultiplier: 0.65
+  _dashSilence: 0.5
+  _retreatTimeout: 8
+  _catAcceleration: 18
   _reinforcementInterval: 3
   _catHearts: 3
   _patrolSpeed: 2.5
@@ -35,13 +40,15 @@ MonoBehaviour:
   _catchRest: 1
   _respawnDelay: 20
   _interactionRadius: 1.2
-  _trapPreviewDistance: 4
+  _switchPressDuration: 0.5
+  _switchNoiseRadius: 3
+  _switchNoiseInterval: 0.25
   _cupDelay: 0.5
   _cupRadius: 3
   _cupDamage: 2
   _cupStun: 4
   _cupCooldown: 20
-  _vacuumDuration: 8
+  _vacuumDockSafety: 3
   _vacuumSpeed: 3
   _vacuumRadius: 1.1
   _vacuumDamage: 2
@@ -57,9 +64,14 @@ MonoBehaviour:
   _baitCooldown: 5
   _baitFlightTime: 0.5
   _baitNoiseRadius: 6
-  _baitEatTime: 3
+  _baitEatTime: 1.5
+  _baitEatRadius: 0.6
+  _baitImmunity: 30
+  _baitPoolSize: 3
+  _pickupSpeed: 9
+  _bigCheeseScale: 1.5
   _baitLifetime: 10
-  _noiseUpgrade: 0.1
-  _minimumNoise: 0.4
+  _noiseUpgrade: 0.05
+  _minimumNoise: 0.6
   _dashUpgrade: 0.7
   _minimumDashCooldown: 1

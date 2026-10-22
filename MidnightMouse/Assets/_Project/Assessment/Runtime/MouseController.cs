@@ -9,7 +9,7 @@ namespace MidnightMouse
         [SerializeField, Tooltip("사용자 쥐 모델 자식. 교체해도 이동과 충돌은 루트에 유지됨.")] private Transform _visual;
         [SerializeField, Range(0.5f, 4f), Tooltip("살금살금 속도(m/s). 올리면 조용히 빠르게 이동. 권장 2.")] private float _sneakSpeed = 2f;
         [SerializeField, Range(1f, 6f), Tooltip("걷기 속도(m/s). 올리면 기본 이동이 빨라짐. 권장 4.")] private float _walkSpeed = 4f;
-        [SerializeField, Range(3f, 9f), Tooltip("달리기 속도(m/s). 올리면 도주 쉬워짐. 권장 6.5.")] private float _runSpeed = 6.5f;
+        [SerializeField, Range(3f, 9f), Tooltip("달리기 속도(m/s). 올리면 도주 쉬워짐. 초기값 5.5.")] private float _runSpeed = 5.5f;
         [SerializeField, Range(0.5f, 4f), Tooltip("살금살금 소음 반경(m). 올리면 쉽게 들킴. 권장 2.")] private float _sneakNoise = 2f;
         [SerializeField, Range(2f, 8f), Tooltip("걷기 소음 반경(m). 올리면 멀리서 고양이를 유인. 권장 5.")] private float _walkNoise = 5f;
         [SerializeField, Range(4f, 12f), Tooltip("달리기·대시 소음 반경(m). 올리면 많은 고양이 유인. 권장 9.")] private float _runNoise = 9f;
@@ -24,6 +24,8 @@ namespace MidnightMouse
         private CharacterController _controller;
         private GameController _game;
         private RadiusRing _noiseRing;
+        private RadiusRing _afterimageRing;
+        private float _silenceRemaining;
         private Vector3 _spawnPosition;
         private Quaternion _spawnRotation;
         private Vector3 _visualLocalPosition;
@@ -54,6 +56,8 @@ namespace MidnightMouse
         public float DashCooldown01 => _currentDashCooldown > 0f ? Mathf.Clamp01(_dashCooldownRemaining / _currentDashCooldown) : 0f;
         public bool IsDashing => _dashRemaining > 0f;
         public float NoiseMultiplier => _noiseMultiplier;
+        public float BodyRadius => _controller.radius;
+        public NoiseKind? SleepDisturbance { get; private set; }
 
         /// <summary>씬의 명시적 연결을 받고 초기 위치와 카메라 기준 방향을 보존한다.</summary>
         public void Initialize(GameController game, Camera worldCamera)
@@ -75,6 +79,7 @@ namespace MidnightMouse
             if (_cameraForward.sqrMagnitude < 0.01f) _cameraForward = Vector3.forward;
             _noiseRing = RadiusRing.Create(transform, "소음 범위", new Color(0.3f, 0.75f, 0.85f));
             _noiseRing.transform.localPosition = Vector3.up * 0.045f;
+            _afterimageRing = RadiusRing.Create(game.transform, "대시 잔상", new Color(0.55f, 0.85f, 1f));
             ResetRun();
         }
 
@@ -88,10 +93,13 @@ namespace MidnightMouse
             transform.SetPositionAndRotation(_spawnPosition, _spawnRotation);
             _controller.enabled = true;
             _dashRemaining = _dashCooldownRemaining = _knockbackRemaining = _noiseTimer = _motionTime = 0f;
+            _silenceRemaining = 0f;
+            _afterimageRing.SetAppearance(0f, Color.clear, false);
             _verticalVelocity = 0f;
             _noiseMultiplier = 1f;
             _currentDashCooldown = _dashCooldown;
             NoiseRadius = 0f;
+            SleepDisturbance = null;
             if (_visual != null)
             {
                 _visual.gameObject.SetActive(true);
@@ -104,6 +112,7 @@ namespace MidnightMouse
         public void Tick(float delta, Vector2 movement, bool sneak, bool run, bool dash)
         {
             if (_game.Phase != GamePhase.Playing || delta <= 0f) return;
+            SleepDisturbance = null;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (_hasDemoInput)
             {
@@ -117,6 +126,7 @@ namespace MidnightMouse
             _motionTime += delta;
             _dashCooldownRemaining = Mathf.Max(0f, _dashCooldownRemaining - delta);
             _noiseTimer = Mathf.Max(0f, _noiseTimer - delta);
+            _silenceRemaining = Mathf.Max(0f, _silenceRemaining - delta);
             Vector2 input = Vector2.ClampMagnitude(movement, 1f);
             Vector3 direction = _cameraForward * input.y + _cameraRight * input.x;
             float speed = sneak ? _sneakSpeed : run ? _runSpeed : _walkSpeed;
@@ -135,7 +145,11 @@ namespace MidnightMouse
                     _dashDirection = direction.sqrMagnitude > 0.01f ? direction.normalized : transform.forward;
                     _dashRemaining = _dashDuration;
                     _dashCooldownRemaining = _currentDashCooldown;
-                    _game.EmitNoise(transform.position, _runNoise * _noiseMultiplier);
+                    _silenceRemaining = Mathf.Max(_dashDuration, _game.Rules.DashSilence);
+                    float radius = _runNoise * _game.Rules.GlobalNoiseMultiplier;
+                    _afterimageRing.transform.position = transform.position + Vector3.up * 0.06f;
+                    _afterimageRing.SetAppearance(radius, new Color(0.55f, 0.85f, 1f), true);
+                    _game.EmitNoise(transform.position, radius, NoiseKind.Afterimage, true);
                     _game.PlaySound(GameSound.Dash);
                 }
                 if (_dashRemaining > 0f)
@@ -156,15 +170,20 @@ namespace MidnightMouse
             _lastMoveSpeed = delta > 0f ? moved / delta : 0f;
             if (!knockingBack && direction.sqrMagnitude > 0.01f)
                 transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(direction), delta * 18f);
-            NoiseRadius = moved > 0.001f && !knockingBack ? (IsDashing ? _runNoise : sneak ? _sneakNoise : run ? _runNoise : _walkNoise) * _noiseMultiplier : 0f;
+            NoiseRadius = moved > 0.001f && !knockingBack && _silenceRemaining <= 0f && !IsDashing
+                ? (sneak ? _sneakNoise : run ? _runNoise : _walkNoise) * _noiseMultiplier * _game.Rules.GlobalNoiseMultiplier : 0f;
+            // 소음 전달 간격 대신 실제 움직인 시간으로 게으름냥의 수면 게이지를 줄인다.
+            if (moved > .001f && !knockingBack && !sneak && _silenceRemaining <= 0f && !IsDashing)
+                SleepDisturbance = run ? NoiseKind.Loud : NoiseKind.Normal;
             if (NoiseRadius > 0f && _noiseTimer <= 0f)
             {
                 // 소음 이벤트 때만 고양이를 검사해 프레임별 전수 감지를 피한다.
-                _game.EmitNoise(transform.position, NoiseRadius);
+                _game.EmitNoise(transform.position, NoiseRadius, !sneak && run ? NoiseKind.Loud : NoiseKind.Normal, true);
                 _noiseTimer = _noiseInterval;
                 if (!sneak) _game.PlaySound(GameSound.Footstep);
             }
             UpdateVisual(sneak);
+            if (_silenceRemaining <= 0f) _afterimageRing.SetAppearance(0f, Color.clear, false);
         }
 
         /// <summary>피격 지점 반대 방향으로 밀려나는 동안 대시와 조작을 중단한다.</summary>
@@ -215,7 +234,7 @@ namespace MidnightMouse
         private void UpdateVisual(bool sneak)
         {
             Color color = sneak ? new Color(0.28f, 0.65f, 0.7f) : NoiseRadius > _walkNoise ? new Color(1f, 0.45f, 0.23f) : new Color(0.4f, 0.72f, 0.85f);
-            _noiseRing.SetAppearance(Mathf.Max(0.35f, NoiseRadius), color, true);
+            _noiseRing.SetAppearance(NoiseRadius, color, NoiseRadius > 0f);
             if (_visual == null) return;
             float bob = _lastMoveSpeed > 0.1f ? Mathf.Abs(Mathf.Sin(_motionTime * (_lastMoveSpeed + 5f))) * 0.045f : 0f;
             _visual.localPosition = _visualLocalPosition + Vector3.up * (bob - (sneak ? 0.045f : 0f));

@@ -17,6 +17,7 @@ namespace MidnightMouse
         private bool _claimed;
 
         public bool IsAvailable => gameObject.activeSelf && _landed && !_claimed;
+        public int Generation { get; private set; }
 
         /// <summary>시작 때 한 번 모델과 소음 표시를 만든다.</summary>
         public void Initialize(GameController game)
@@ -39,6 +40,7 @@ namespace MidnightMouse
         /// <summary>풀의 미끼를 출발점에서 목표점으로 던진다.</summary>
         public void Launch(Vector3 start, Vector3 target)
         {
+            Generation++;
             _start = start + Vector3.up * 0.4f;
             _target = target + Vector3.up * 0.15f;
             _elapsed = 0f;
@@ -62,7 +64,7 @@ namespace MidnightMouse
                 if (fraction < 1f) return;
                 _landed = true;
                 _elapsed = 0f;
-                _game.EmitNoise(_target, _game.Rules.BaitNoiseRadius, this);
+                _game.EmitNoise(_target, _game.Rules.BaitNoiseRadius, NoiseKind.Bait, false, this);
                 _game.PlaySound(GameSound.Bait);
             }
             _remaining -= delta;
