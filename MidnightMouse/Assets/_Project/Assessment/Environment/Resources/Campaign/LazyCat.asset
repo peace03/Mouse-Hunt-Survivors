@@ -25,3 +25,4 @@ MonoBehaviour:
   _sleepDamageMultiplier: 2
   _walkWakeSeconds: 3
   _runWakeSeconds: 1.5
+  _sleepRecoverySeconds: 6

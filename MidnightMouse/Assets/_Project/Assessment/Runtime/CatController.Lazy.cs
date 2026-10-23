@@ -10,6 +10,7 @@ namespace MidnightMouse
         private bool _startAsleep;
         private bool _sleptFromBait;
         private float _wakeProgress;
+        private float _ballWakeAt = -1f;
         private RadiusRing _sleepGauge;
         private bool IsLazy => Kind == CatKind.Lazy;
 
@@ -24,7 +25,7 @@ namespace MidnightMouse
             NoiseKind? movement = _game.Player.SleepDisturbance;
             float radius = _game.Player.NoiseRadius;
             if (!movement.HasValue || radius <= 0f || HorizontalDistanceSquared(transform.position, _game.Player.transform.position) > radius * radius)
-                _wakeProgress = 0f;
+                _wakeProgress = Mathf.Max(0f, _wakeProgress - delta / _definition.SleepRecoverySeconds);
             else _wakeProgress += delta / (movement == NoiseKind.Loud ? _definition.RunWakeSeconds : _definition.WalkWakeSeconds);
             if (_wakeProgress >= 1f) WakeAndChase("footsteps");
             else UpdateSleepGauge();
@@ -82,6 +83,7 @@ namespace MidnightMouse
             SetState(CatState.Sleeping);
             _agent.ResetPath();
             _sleptFromBait = reason == "bait";
+            _ballWakeAt = -1f;
             _game.RecordMeasurement("cat_sleep", _slotIndex + "|" + reason);
         }
 

@@ -244,22 +244,55 @@ namespace MidnightMouse.Tests
             Assert.That(Field(_cat, "_target"), Is.EqualTo(_game.Player.transform.position));
         }
 
-        /// <summary>소음에서 벗어나거나 조용해지면 연속 노출이 끊기고 게이지가 복구된다.</summary>
+        /// <summary>조용해지면 감소보다 천천히 원호를 회복하고 완전히 채워진 뒤에는 넘치지 않는다.</summary>
         [TestCase("outside")]
         [TestCase("sneak")]
         [TestCase("stop")]
-        public void InterruptedFootstepsRestoreSleepGauge(string interruption)
+        public void InterruptedFootstepsSlowlyRestoreSleepGauge(string interruption)
         {
             PrepareSleepingContactTest();
-            StepFootsteps(.1f, 0, false);
-            Assert.That((float)Field(_cat, "_wakeProgress"), Is.GreaterThan(0f));
+            for (int i = 0; i < 12; i++) StepFootsteps(.1f, i, false);
+            float before = (float)Field(_cat, "_wakeProgress");
+            Assert.That(before, Is.EqualTo(.4f).Within(.001f));
             if (interruption == "outside") MovePlayer(new Vector3(1f, 0f, -9f));
             _game.Player.Tick(.1f, interruption == "stop" ? Vector2.zero : Vector2.left, interruption == "sneak", false, false);
             _cat.Tick(.1f);
-            Assert.That((float)Field(_cat, "_wakeProgress"), Is.Zero);
+            float after = (float)Field(_cat, "_wakeProgress");
+            Assert.That(after, Is.EqualTo(before - .1f / 6f).Within(.001f));
+            Assert.That(before - after, Is.LessThan(.1f / _cat.Definition.WalkWakeSeconds));
+            Assert.That(before - after, Is.LessThan(.1f / _cat.Definition.RunWakeSeconds));
             Assert.That(_cat.State, Is.EqualTo(CatState.Sleeping));
             var gauge = _cat.transform.Find("수면 게이지").GetComponent<LineRenderer>();
+            Vector3 expectedEnd = new Vector3(Mathf.Sin(2f * Mathf.PI * (1f - after)), 0f, Mathf.Cos(2f * Mathf.PI * (1f - after)));
+            Assert.That(Vector3.Distance(gauge.GetPosition(gauge.positionCount - 1), expectedEnd), Is.LessThan(.001f));
+            for (int i = 0; i < 40; i++)
+            {
+                _game.Player.Tick(.1f, interruption == "stop" ? Vector2.zero : Vector2.left, interruption == "sneak", false, false);
+                _cat.Tick(.1f);
+            }
+            Assert.That((float)Field(_cat, "_wakeProgress"), Is.Zero);
             Assert.That(Vector3.Distance(gauge.GetPosition(0), gauge.GetPosition(gauge.positionCount - 1)), Is.LessThan(.01f));
+        }
+
+        /// <summary>회복 중 일시정지는 시간을 멈추고 재노출은 남은 누적량에서 이어진다.</summary>
+        [Test]
+        public void ReenteringNoiseContinuesFromPartiallyRecoveredGauge()
+        {
+            PrepareSleepingContactTest();
+            for (int i = 0; i < 15; i++) StepFootsteps(.1f, i, false);
+            MovePlayer(new Vector3(1f, 0f, -9f));
+            for (int i = 0; i < 6; i++) StepFootsteps(.1f, i, false);
+            Assert.That((float)Field(_cat, "_wakeProgress"), Is.EqualTo(.4f).Within(.001f));
+            _game.TogglePause();
+            _cat.Tick(10f);
+            Assert.That((float)Field(_cat, "_wakeProgress"), Is.EqualTo(.4f).Within(.001f));
+            _game.TogglePause();
+            MovePlayer(new Vector3(1f, 0f, -5f));
+            for (int i = 0; i < 8; i++) StepFootsteps(.1f, i, true);
+            Assert.That(_cat.State, Is.EqualTo(CatState.Sleeping));
+            Assert.That((float)Field(_cat, "_wakeProgress"), Is.EqualTo(.4f + .8f / 1.5f).Within(.001f));
+            StepFootsteps(.11f, 8, true);
+            Assert.That(_cat.State, Is.EqualTo(CatState.Chase));
         }
 
         /// <summary>카드로 줄어든 원 바깥은 누적하지 않고 청각 배율로 범위를 부풀리지 않는다.</summary>
