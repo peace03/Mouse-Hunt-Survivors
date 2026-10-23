@@ -10,7 +10,27 @@ namespace MidnightMouse
         public int version = 1;
         public bool introSeen;
         public int tutorialSeen;
+        public int encounteredCats;
         public List<CampaignNightRecord> nights = new List<CampaignNightRecord>();
+
+        /// <summary>실제 만난 종류만 누적하고 처음 기록한 경우에만 저장을 요청한다.</summary>
+        public bool RecordEncounter(CatKind kind)
+        {
+            int bit = CatBit(kind);
+            if ((encounteredCats & bit) != 0) return false;
+            encounteredCats |= bit;
+            return true;
+        }
+
+        /// <summary>밤 해금과 무관하게 실제 만난 종류인지 확인한다.</summary>
+        public bool HasEncountered(CatKind kind) => (encounteredCats & CatBit(kind)) != 0;
+
+        /// <summary>잘못된 종류가 비트 이동으로 다른 종류 기록을 덮지 못하게 한다.</summary>
+        private static int CatBit(CatKind kind) => kind switch
+        {
+            CatKind.Curious => 1, CatKind.Lazy => 2, CatKind.Hunter => 4,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
 
         /// <summary>생존한 판의 부탁·최다 퇴장·최단 시간만 각각 누적한다.</summary>
         public void RecordResult(string nightId, bool survived, bool requestCompleted, int banished, float realSeconds)
@@ -57,6 +77,7 @@ namespace MidnightMouse
         {
             if (version != 1) throw new FormatException($"지원하지 않는 캠페인 저장 버전입니다: {version}");
             if (tutorialSeen < 0 || nights == null) throw new FormatException("캠페인 안내 또는 밤 목록이 잘못되었습니다.");
+            if (encounteredCats < 0 || encounteredCats > 7) throw new FormatException("만난 고양이 기록이 잘못되었습니다.");
             var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (var record in nights)
             {

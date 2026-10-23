@@ -25,7 +25,7 @@ namespace MidnightMouse
         [SerializeField, Tooltip("소음을 줄이는 살금살금 키. 달리기와 동시 입력 시 우선함.")] private Key _sneakKey = Key.LeftCtrl;
         [SerializeField, Tooltip("빠른 달리기 키.")] private Key _runKey = Key.LeftShift;
         [SerializeField, Tooltip("짧은 대시 키.")] private Key _dashKey = Key.Space;
-        [SerializeField, Tooltip("가까운 함정을 사용하는 키.")] private Key _interactKey = Key.E;
+        [SerializeField, Tooltip("가까운 공 또는 함정을 사용하는 키.")] private Key _interactKey = Key.E;
         [SerializeField, Tooltip("일시정지와 재개 키.")] private Key _pauseKey = Key.Escape;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         [SerializeField, Tooltip("다음 단계 시작으로 게임 시계를 옮기는 디버그 키.")] private Key _nextStageKey = Key.F1;
@@ -41,6 +41,9 @@ namespace MidnightMouse
         private GameAudio _audio;
         private CheeseBait[] _baits;
         private RadiusRing _aimRing;
+        private ToyBall _ball;
+        private bool _hintBall;
+        public ToyBall Ball => _ball;
         private GamePhase _lastPhase;
         private float _baitCooldown;
         private float _cheeseTimer;
@@ -61,6 +64,8 @@ namespace MidnightMouse
         public float LastDawnAdvance { get; private set; }
         public float DawnNoticeUntil { get; private set; }
         public string DebugNotice { get; private set; } = "";
+        public string DefeatCause { get; private set; } = "";
+        public string DefeatTip { get; private set; } = "";
         public float DebugNoticeUntil { get; private set; }
         public float Duration => CurrentNight != null ? CurrentNight.Duration : _rules == null ? 300f : _rules.Duration;
         public int Hearts => _session == null ? 0 : _session.Hearts;
@@ -108,6 +113,11 @@ namespace MidnightMouse
             }
             _aimRing = RadiusRing.Create(transform, "미끼 착지 조준", new Color(1f, 0.8f, 0.25f), 0.05f);
             _aimRing.SetAppearance(0.32f, Color.yellow, false);
+            if (_layout == null) throw new System.InvalidOperationException("공 시작 자리가 있는 M1Layout 연결이 필요합니다.");
+            var ballObject = new GameObject("장난감 공");
+            ballObject.transform.SetParent(transform, false);
+            _ball = ballObject.AddComponent<ToyBall>();
+            _ball.Initialize(this, _layout);
             _lastPhase = GamePhase.Title;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             string[] arguments = System.Environment.GetCommandLineArgs();
@@ -159,12 +169,15 @@ namespace MidnightMouse
             }
             _player.Tick(delta, movement, sneak, run, dash);
             _baitCooldown = Mathf.Max(0f, _baitCooldown - delta);
-            if (keyboard != null && keyboard[_interactKey].wasPressedThisFrame) TryUseNearestTrap();
-            bool hasAim = TryGetCursorAim(out Vector3 aim);
+            bool hasCursor = TryGetCursorFloor(out Vector3 ground);
+            if (keyboard != null && keyboard[_interactKey].wasPressedThisFrame) TryInteract(hasCursor ? ground : (Vector3?)null);
+            bool hasAim = TryClampAim(ground, out Vector3 aim) && hasCursor;
+            _ball.ShowAim(IsBallNearest(FindNearestTrap(_rules.InteractionRadius)), hasCursor ? ground : (Vector3?)null);
             _aimRing.transform.position = aim + Vector3.up * 0.075f;
             _aimRing.SetAppearance(0.32f, _baitCooldown <= 0f ? new Color(1f, 0.8f, 0.25f) : new Color(0.35f, 0.4f, 0.47f), hasAim);
             if (hasAim && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame &&
                 (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())) TryThrowBait(aim);
+            _ball.Tick(delta);
             foreach (CheeseBait bait in _baits) bait.Tick(delta);
             foreach (TrapController trap in _traps) trap.Tick(delta);
             foreach (CatController cat in _cats)
@@ -205,6 +218,7 @@ namespace MidnightMouse
 #endif
             LastDawnAdvance = DawnNoticeUntil = DebugNoticeUntil = 0f;
             DebugNotice = "";
+            DefeatCause = DefeatTip = "";
             _player.ResetRun();
             _baitCooldown = _reinforcementTimer = 0f;
             _cheeseTimer = _rules.CheeseInterval;
@@ -212,9 +226,11 @@ namespace MidnightMouse
             foreach (CheeseBait bait in _baits) bait.ResetRun();
             foreach (TrapController trap in _traps) trap.ResetRun();
             ResetNightActors();
+            _ball.ResetRun(CurrentNight != null && CurrentNight.Ball);
             for (int index = 0; index < _rules.InitialCrumbs; index++) SpawnCrumb();
             CurrentHint = "달리면 빨라지지만 고양이가 소음을 듣습니다. 함정의 노란 원에서 E.";
             _hintTrap = null;
+            _hintBall = false;
             _hintReady = _hintActive = false;
             SyncPhase();
         }
@@ -225,6 +241,7 @@ namespace MidnightMouse
             if (Phase != GamePhase.Ready) return;
             _session.BeginPlay();
             _startedFrame = Time.frameCount;
+            RecordEncounteredCats();
             ShowGuide(1, "WASD 이동 · Ctrl 살금살금 · 발밑 원이 소리 범위");
             SyncPhase();
         }
@@ -300,7 +317,25 @@ namespace MidnightMouse
             return false;
         }
 
-        /// <summary>상호작용 범위 안의 가장 가까운 함정만 작동시킨다.</summary>
+        /// <summary>상호작용 범위 안에서 가장 가까운 공 또는 스위치 한 개를 사용한다.</summary>
+        public bool TryInteract(Vector3? groundPoint)
+        {
+            if (Phase != GamePhase.Playing) return false;
+            TrapController trap = FindNearestTrap(_rules.InteractionRadius);
+            if (IsBallNearest(trap)) return groundPoint.HasValue && _ball.TryKick(groundPoint.Value);
+            return trap != null && trap.TryActivate();
+        }
+
+        /// <summary>같은 거리에서는 스위치를 우선하며 굴러가는 공도 가까운 대상으로 유지한다.</summary>
+        private bool IsBallNearest(TrapController trap)
+        {
+            if (_ball == null || !_ball.gameObject.activeSelf) return false;
+            float distance = Vector3.ProjectOnPlane(_ball.transform.position - _player.transform.position, Vector3.up).sqrMagnitude;
+            return distance <= _rules.InteractionRadius * _rules.InteractionRadius &&
+                (trap == null || distance < Vector3.ProjectOnPlane(trap.transform.position - _player.transform.position, Vector3.up).sqrMagnitude);
+        }
+
+        /// <summary>기존 함정 시연 호출에 사용할 가까운 함정만 작동시킨다.</summary>
         public bool TryUseNearestTrap()
         {
             if (Phase != GamePhase.Playing) return false;
@@ -309,13 +344,16 @@ namespace MidnightMouse
         }
 
         /// <summary>진행 중 유효한 피격만 체력·반동·효과음으로 반영한다.</summary>
-        public bool TryDamagePlayer(Vector3 source, CatState sourceState = CatState.Chase)
+        public bool TryDamagePlayer(Vector3 source, CatState sourceState = CatState.Chase,
+            CatKind sourceKind = CatKind.Curious, CatTarget sourceTarget = CatTarget.None)
         {
             if (!_initialized || !_session.TryDamage()) return false;
+            if (Phase == GamePhase.Lost)
+                (DefeatCause, DefeatTip) = CatLearning.Capture(sourceKind, sourceState, sourceTarget);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            if (Phase == GamePhase.Lost) _deathCause = "Curious:" + sourceState;
+            if (Phase == GamePhase.Lost) _deathCause = sourceKind + ":" + sourceState;
 #endif
-            RecordMeasurement("player_hit", "Curious:" + sourceState);
+            RecordMeasurement("player_hit", sourceKind + ":" + sourceState);
             _player.KnockBack(source);
             PlaySound(GameSound.Hit);
             SyncPhase();
@@ -332,10 +370,10 @@ namespace MidnightMouse
         }
 
         /// <summary>실제 소음 이벤트 때만 고양이 풀에 감지 여부를 전달한다.</summary>
-        public void EmitNoise(Vector3 point, float radius, NoiseKind kind = NoiseKind.Normal, bool fromPlayer = false, CheeseBait bait = null)
+        public void EmitNoise(Vector3 point, float radius, NoiseKind kind = NoiseKind.Normal, bool fromPlayer = false, CheeseBait bait = null, bool fromBall = false)
         {
             if (Phase != GamePhase.Playing || radius <= 0f) return;
-            foreach (CatController cat in _cats) cat.ReceiveNoise(point, radius, kind, fromPlayer, bait);
+            foreach (CatController cat in _cats) cat.ReceiveNoise(point, radius, kind, fromPlayer, bait, fromBall);
         }
 
         /// <summary>고양이 퇴장 위치에 큰 치즈를 떨어뜨리고 퇴장 수를 기록한다.</summary>
@@ -439,15 +477,16 @@ namespace MidnightMouse
             }
         }
 
-        /// <summary>커서 광선을 바닥 평면에 투영해 적법한 미끼 위치로 보정한다.</summary>
-        private bool TryGetCursorAim(out Vector3 target)
+        /// <summary>공과 미끼가 각자의 출발점에서 제한할 수 있도록 커서를 바닥 평면에 투영한다.</summary>
+        private bool TryGetCursorFloor(out Vector3 target)
         {
             target = _player.transform.position;
             if (Mouse.current == null) return false;
             Ray ray = _worldCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
             var floor = new Plane(Vector3.up, Vector3.zero);
             if (!floor.Raycast(ray, out float distance)) return false;
-            return TryClampAim(ray.GetPoint(distance), out target);
+            target = ray.GetPoint(distance);
+            return true;
         }
 
         /// <summary>잘못된 좌표와 바닥 밖 지점을 거부하고 최대 사거리를 지킨다.</summary>
@@ -488,13 +527,16 @@ namespace MidnightMouse
         private void UpdateHint()
         {
             TrapController trap = FindNearestTrap(_rules.InteractionRadius);
-            bool ready = trap != null && trap.IsReady;
+            bool ball = IsBallNearest(trap);
+            bool ready = ball ? _ball.CanKick : trap != null && trap.IsReady;
             bool active = trap != null && trap.IsActive;
-            if (_hintTrap == trap && _hintReady == ready && _hintActive == active) return;
+            if (_hintTrap == trap && _hintReady == ready && _hintActive == active && _hintBall == ball) return;
+            _hintBall = ball;
             _hintTrap = trap;
             _hintReady = ready;
             _hintActive = active;
-            if (trap == null) CurrentHint = "소음으로 고양이를 유인하세요. 노란 원 근처에서 E로 함정을 사용합니다.";
+            if (ball) CurrentHint = ready ? "E  공 차기 · 마우스로 도착 위치 지정 · 멈춤 소리로 고양이를 유인하세요" : "공이 구르는 중 · 멈춘 뒤 가까이서 다시 찰 수 있습니다.";
+            else if (trap == null) CurrentHint = "소음으로 고양이를 유인하세요. 노란 원 근처에서 E로 함정을 사용합니다.";
             else if (!trap.IsNightEnabled) CurrentHint = "청소기 충전 중 · 2일째부터 사용할 수 있습니다.";
             else if (trap.IsPressing) CurrentHint = "스위치 누르는 중 · 움직이면 취소됩니다.";
             else if (trap.IsReady) CurrentHint = trap.Kind == TrapKind.Cup ? "E  컵 떨어뜨리기 · 큰 원 안으로 고양이를 유인하세요" : "E  청소기 작동 · 표시된 경로 위로 고양이를 유인하세요";
@@ -510,7 +552,7 @@ namespace MidnightMouse
             bool running = Phase == GamePhase.Playing;
             foreach (CatController cat in _cats) cat.SetSimulation(running);
             _player.SetSimulation(running);
-            if (!running) _aimRing.SetAppearance(0.32f, Color.yellow, false);
+            if (!running) { _aimRing.SetAppearance(0.32f, Color.yellow, false); _ball.ShowAim(false, null); }
             if (Phase == GamePhase.Won) PlaySound(GameSound.Win);
             else if (Phase == GamePhase.Lost) PlaySound(GameSound.Lose);
             if (Phase == GamePhase.Won || Phase == GamePhase.Lost)

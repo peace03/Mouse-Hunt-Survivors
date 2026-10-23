@@ -19,6 +19,9 @@ namespace MidnightMouse
         [SerializeField, Min(1), Tooltip("단계 길이(초). 길수록 한 판 증가. 1일째 45, 이후 60.")] private float _stageSeconds = 60;
         [SerializeField, Tooltip("종류별 다섯 단계 구성. 수는 줄지 않으며 합계 최대 7.")] private Roster[] _roster;
         [SerializeField, Tooltip("이번 밤에 청소기 사용 가능.")] private bool _vacuum;
+        [SerializeField, Tooltip("이번 밤에 장난감 공 사용 가능. 4일째부터.")] private bool _ball;
+        [SerializeField, Tooltip("공 멈춤 소리로 깨운 뒤 제한 시간 안에 함정을 맞히는 부탁.")] private bool _ballWakeRequest;
+        [SerializeField, Range(1f, 30f), Tooltip("공 기상 후 부탁 타격 제한(실제 초). 올리면 성공하기 쉬움. 초기값 10.")] private float _ballWakeWindow = 10f;
         [SerializeField, Min(0), Tooltip("미끼 내성(초). 높을수록 재유인 어려움. 1일째 0, 이후 30.")] private float _baitImmunity = 30;
         [SerializeField, Min(0.1f), Tooltip("추적 속도 배율. 기본 1, 보름달 1.1.")] private float _chaseMultiplier = 1;
         [SerializeField, Min(1), Tooltip("세 번째 별에 필요한 퇴장 수. 초기 1일째 3, 2일째 4.")] private int _banishTarget = 4;
@@ -35,6 +38,9 @@ namespace MidnightMouse
         public float Duration => _stageSeconds * 5;
         public Roster[] Cats => _roster;
         public bool Vacuum => _vacuum;
+        public bool Ball => _ball;
+        public bool BallWakeRequest => _ballWakeRequest;
+        public float BallWakeWindow => _ballWakeWindow;
         public float BaitImmunity => _baitImmunity;
         public float ChaseMultiplier => _chaseMultiplier;
         public int BanishTarget => _banishTarget;
@@ -62,6 +68,7 @@ namespace MidnightMouse
                 !float.IsFinite(_chaseMultiplier) || _chaseMultiplier <= 0 || !float.IsFinite(_baitImmunity) || _baitImmunity < 0 ||
                 _banishTarget < 1 || _requestHits < 1 || _requestHits > 7 || string.IsNullOrWhiteSpace(_requestName) || _stageSeconds <= 0 || !float.IsFinite(_stageSeconds) ||
                 _roster == null || _roster.Length == 0 || _stageLines == null || _stageLines.Length != 5) return false;
+            if (_ballWakeRequest && (!_ball || _lullabyRequest || !float.IsFinite(_ballWakeWindow) || _ballWakeWindow <= 0f)) return false;
             var totals = new int[5];
             for (int index = 0; index < _roster.Length; index++)
             {

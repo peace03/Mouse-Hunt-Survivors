@@ -102,6 +102,17 @@ namespace MidnightMouse
             cat.Configure(kind, spawn, sleepPoint, initial);
             _enteredCats++;
             cat.SetAvailable(true);
+            if (Phase == GamePhase.Playing) RecordEncounteredCats();
+        }
+
+        /// <summary>준비 화면에서는 공개하지 않고 실제 시작·추가 입장 때 처음 만난 종류를 저장한다.</summary>
+        private void RecordEncounteredCats()
+        {
+            bool changed = false;
+            for (int i = 0; i < _enteredCats; i++)
+                if (_cats[i].IsAvailable)
+                    changed |= Progress.RecordEncounter(_cats[i].Definition != null ? _cats[i].Definition.Kind : CatKind.Curious);
+            if (changed) SaveProgress();
         }
 
         /// <summary>기존 슬롯의 종류를 바꾸지 않고 현재 단계에서 모자란 종류만 찾는다.</summary>
@@ -118,6 +129,9 @@ namespace MidnightMouse
 
         /// <summary>타격 고유 수를 개발 기록과 분리된 부탁 판정에 전달한다.</summary>
         public void RecordTrapHit(TrapKind kind, int uniqueHits) => _events.TrapHit(kind, uniqueHits, CurrentNight);
+
+        /// <summary>공 기상 뒤 제한 시간 안의 첫 함정 타격을 부탁에 반영한다.</summary>
+        public void RecordBallWakeHit() => _events.BallWakeHit(CurrentNight);
 
         /// <summary>미끼로 재운 게으름냥의 첫 함정 피격을 자장가 부탁에 반영한다.</summary>
         public void RecordBaitSleepHit() => _events.BaitSleepHit(CurrentNight);

@@ -73,11 +73,26 @@ namespace MidnightMouse
         [SerializeField, Range(1f, 20f), Tooltip("치즈 흡수 속도(m/s). 올리면 빠르게 회수. 초기값 9.")] private float _pickupSpeed = 9f;
         [SerializeField, Range(1f, 3f), Tooltip("큰 치즈 크기(배). 올리면 보상을 쉽게 구분. 초기값 1.5.")] private float _bigCheeseScale = 1.5f;
 
+        [Header("장난감 공")]
+        [SerializeField, Range(.1f, .3f), Tooltip("공 몸 반경(m). 올리면 좁은 틈을 통과하기 어려움. 권장 0.18.")] private float _ballRadius = .18f;
+        [SerializeField, Range(1f, 6f), Tooltip("공 속도(m/s). 올리면 빨리 도착. 초기값 3.")] private float _ballSpeed = 3f;
+        [SerializeField, Range(1f, 10f), Tooltip("공 최대 이동 거리(m). 올리면 멀리 유인. 초기값 6.")] private float _ballDistance = 6f;
+        [SerializeField, Range(1f, 10f), Tooltip("굴림 소리 반경(m). 올리면 사냥꾼이 멀리서 들음. 초기값 4.")] private float _ballRollRadius = 4f;
+        [SerializeField, Range(.1f, 1f), Tooltip("굴림 소리 간격(초). 올리면 소리가 드물어짐. 초기값 0.25.")] private float _ballNoiseInterval = .25f;
+        [SerializeField, Range(1f, 15f), Tooltip("멈춤 소리 반경(m). 올리면 더 멀리서 깸. 초기값 9.")] private float _ballStopRadius = 9f;
+
         [Header("반복 성장")]
         [SerializeField, Range(0.02f, 0.25f), Tooltip("발소리 성장 1회 감소 비율(배). 올리면 소음 감소 폭 증가. 초기값 0.05.")] private float _noiseUpgrade = 0.05f;
         [SerializeField, Range(0.2f, 0.8f), Tooltip("발소리 최소 배율(배). 내리면 반복 성장 후 더 조용함. 전역 배율과 독립. 초기값 0.6.")] private float _minimumNoise = 0.6f;
         [SerializeField, Range(0.1f, 1f), Tooltip("대시 성장 1회 대기 감소(초). 올리면 빠른 대시 성장. 권장 0.7.")] private float _dashUpgrade = 0.7f;
         [SerializeField, Range(0.5f, 3f), Tooltip("대시 최소 대기(초). 내리면 반복 성장 후 자주 대시. 권장 1.")] private float _minimumDashCooldown = 1f;
+
+        public float BallRadius => _ballRadius;
+        public float BallSpeed => _ballSpeed;
+        public float BallDistance => _ballDistance;
+        public float BallRollRadius => _ballRollRadius;
+        public float BallNoiseInterval => _ballNoiseInterval;
+        public float BallStopRadius => _ballStopRadius;
 
         public float Duration => _duration;
         public int StartingHearts => _startingHearts;

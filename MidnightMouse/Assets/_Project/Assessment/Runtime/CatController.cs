@@ -113,6 +113,7 @@ namespace MidnightMouse
             gameObject.SetActive(available);
             if (!available) return;
             Health = MaxHealth;
+            _ballWakeAt = -1f;
             _chaseStarted = -1f;
             _stateTimer = _lostTimer = _captureRest = _destinationTimer = _baitImmunityRemaining = 0f;
             _targetKind = CatTarget.None;
@@ -257,21 +258,27 @@ namespace MidnightMouse
         }
 
         /// <summary>감지 범위 안의 소음에만 반응하며 미끼를 우선 조사한다.</summary>
-        public void ReceiveNoise(Vector3 point, float radius, NoiseKind kind, bool fromPlayer, CheeseBait bait = null)
+        public void ReceiveNoise(Vector3 point, float radius, NoiseKind kind, bool fromPlayer, CheeseBait bait = null, bool fromBall = false)
         {
             if (_game.Phase != GamePhase.Playing || !CanReceiveHit || radius <= 0f || State == CatState.Stunned || State == CatState.Eating) return;
             float hearing = IsLazy && State == CatState.Sleeping && fromPlayer ? radius
                 : radius * (_definition != null ? _definition.Hearing : _rules.HearingMultiplier);
             if (HorizontalDistanceSquared(point, transform.position) > hearing * hearing) return;
             CatReaction reaction = CatReactionRules.EvaluateNoise(Kind, State, _targetKind, kind,
-                fromPlayer: fromPlayer, baitAvailable: bait != null && bait.IsAvailable, baitImmune: _baitImmunityRemaining > 0f, stage: _game.Stage);
+                fromPlayer: fromPlayer, fromBall: fromBall, baitAvailable: bait != null && bait.IsAvailable, baitImmune: _baitImmunityRemaining > 0f, stage: _game.Stage);
             if (reaction == CatReaction.Ignore) return;
             if (reaction == CatReaction.RefreshChase)
             {
                 _lostTimer = 0f;
                 return;
             }
-            if (reaction == CatReaction.WakeRush) { BeginWakeRush(point, "sound"); return; }
+            if (reaction == CatReaction.WakeRush)
+            {
+                bool ballWake = IsLazy && State == CatState.Sleeping && fromBall && kind == NoiseKind.Loud;
+                BeginWakeRush(point, ballWake ? "ball" : "sound");
+                if (ballWake) _ballWakeAt = _game.RealElapsed;
+                return;
+            }
             if (reaction == CatReaction.WakeChase) { WakeAndChase("dash"); return; }
             // 공을 따라가는 실제 이동은 사냥꾼 단계에서 연결한다.
             if (reaction != CatReaction.Investigate && reaction != CatReaction.FollowBait) return;
@@ -281,7 +288,7 @@ namespace MidnightMouse
             SetState(CatState.Investigate, kind == NoiseKind.Bait ? "bait" : kind == NoiseKind.Afterimage ? "afterimage" : "sound");
             if (fromPlayer && (kind == NoiseKind.Normal || kind == NoiseKind.Loud))
                 _game.ShowGuide(2, "클릭: 치즈를 던져 고양이를 딴 데로");
-            _targetKind = CatReactionRules.NoiseTarget(Kind, kind);
+            _targetKind = CatReactionRules.NoiseTarget(Kind, kind, fromBall);
             _arrived = false;
             _destinationTimer = 0f;
             MoveTo(_target, InvestigateSpeed);
@@ -291,6 +298,12 @@ namespace MidnightMouse
         public bool ApplyTrapHit(int damage, float stun, Vector3 pushDirection, float pushDistance = 0f, Vector3? switchPosition = null)
         {
             if (_game.Phase != GamePhase.Playing || !CanReceiveHit || damage <= 0) return false;
+            if (_ballWakeAt >= 0f && switchPosition.HasValue)
+            {
+                if (_game.CurrentNight != null && _game.RealElapsed - _ballWakeAt <= _game.CurrentNight.BallWakeWindow)
+                    _game.RecordBallWakeHit();
+                _ballWakeAt = -1f;
+            }
             bool sleepingHit = IsLazy && State == CatState.Sleeping;
             if (sleepingHit)
             {
@@ -327,7 +340,7 @@ namespace MidnightMouse
         private bool TryCatchPlayer()
         {
             if (_captureRest > 0f || HorizontalDistanceSquared(_game.Player.transform.position, transform.position) > _rules.CatchRadius * _rules.CatchRadius) return false;
-            if (!_game.TryDamagePlayer(transform.position, State)) return false;
+            if (!_game.TryDamagePlayer(transform.position, State, Kind, _targetKind)) return false;
             _captureRest = _rules.CatchRest;
             _agent.isStopped = true;
             return true;

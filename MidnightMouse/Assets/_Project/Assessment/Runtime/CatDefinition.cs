@@ -19,6 +19,7 @@ namespace MidnightMouse
         [SerializeField, Min(1), Tooltip("잠든 채 피격 피해 배율. 높을수록 잠 활용 보상 증가. 초기 2.")] private int _sleepDamageMultiplier = 2;
         [SerializeField, Range(.1f, 10f), Tooltip("소음 원 안에서 걷기를 계속 들으면 깨는 시간(초). 높을수록 늦게 깸. 초기 3.")] private float _walkWakeSeconds = 3f;
         [SerializeField, Range(.1f, 10f), Tooltip("소음 원 안에서 달리기를 계속 들으면 깨는 시간(초). 높을수록 늦게 깸. 초기 1.5.")] private float _runWakeSeconds = 1.5f;
+        [SerializeField, Range(.1f, 30f), Tooltip("조용할 때 수면 게이지 전체 회복 시간(초). 높을수록 천천히 회복. 걷기·달리기 기상 시간보다 크게, 권장 6.")] private float _sleepRecoverySeconds = 6f;
         public string Id => _id;
         public CatKind Kind => _kind;
         public int Health => _health;
@@ -32,6 +33,7 @@ namespace MidnightMouse
         public int SleepDamageMultiplier => _sleepDamageMultiplier;
         public float WalkWakeSeconds => _walkWakeSeconds;
         public float RunWakeSeconds => _runWakeSeconds;
+        public float SleepRecoverySeconds => _sleepRecoverySeconds;
 
         /// <summary>종류별 기본 수치가 유한한 양수인지 확인한다.</summary>
         public bool IsValid() => !string.IsNullOrWhiteSpace(_id) && _kind >= CatKind.Curious && _kind <= CatKind.Hunter && _health > 0 &&
@@ -39,6 +41,7 @@ namespace MidnightMouse
             float.IsFinite(_chase) && _chase > 0 && float.IsFinite(_retreat) && _retreat > 0 &&
             float.IsFinite(_hearing) && _hearing > 0 && float.IsFinite(_wakeSpeed) && _wakeSpeed > 0 &&
             float.IsFinite(_wakeDuration) && _wakeDuration > 0 && _sleepDamageMultiplier >= 1 &&
-            float.IsFinite(_walkWakeSeconds) && _walkWakeSeconds > 0 && float.IsFinite(_runWakeSeconds) && _runWakeSeconds > 0;
+            float.IsFinite(_walkWakeSeconds) && _walkWakeSeconds > 0 && float.IsFinite(_runWakeSeconds) && _runWakeSeconds > 0 &&
+            float.IsFinite(_sleepRecoverySeconds) && _sleepRecoverySeconds > Mathf.Max(_walkWakeSeconds, _runWakeSeconds);
     }
 }

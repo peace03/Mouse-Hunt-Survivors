@@ -17,7 +17,7 @@ namespace MidnightMouse
             _source = GetComponent<AudioSource>();
             _source.playOnAwake = false;
             _source.spatialBlend = 0f;
-            _clips = new AudioClip[11];
+            _clips = new AudioClip[System.Enum.GetValues(typeof(GameSound)).Length];
             _clips[(int)GameSound.Pickup] = CreateTone("치즈", 700f, 1100f, 0.13f);
             _clips[(int)GameSound.Dash] = CreateTone("대시", 320f, 70f, 0.17f);
             _clips[(int)GameSound.Hit] = CreateTone("피격", 190f, 65f, 0.35f);
@@ -29,6 +29,9 @@ namespace MidnightMouse
             _clips[(int)GameSound.Footstep] = CreateTone("발소리", 110f, 80f, 0.045f);
             _clips[(int)GameSound.Alert] = CreateTone("고양이", 340f, 520f, 0.22f);
             _clips[(int)GameSound.Wake] = CreateTone("게으름냥 기상", 130f, 850f, 0.48f);
+            _clips[(int)GameSound.BallKick] = CreateTone("공 차기", 220f, 90f, .12f);
+            _clips[(int)GameSound.BallRoll] = CreateTone("공 굴림", 90f, 65f, .12f);
+            _clips[(int)GameSound.BallStop] = CreateTone("공 방울", 1800f, 1450f, .5f);
         }
 
         /// <summary>재생 중인 소리를 끊지 않고 효과음을 겹쳐 재생한다.</summary>
@@ -40,7 +43,7 @@ namespace MidnightMouse
                 if (_wakeFrame == Time.frameCount) return;
                 _wakeFrame = Time.frameCount;
             }
-            _source.PlayOneShot(_clips[(int)sound], _volume * (sound == GameSound.Footstep ? 0.12f : 1f));
+            _source.PlayOneShot(_clips[(int)sound], _volume * (sound == GameSound.Footstep || sound == GameSound.BallRoll ? 0.12f : 1f));
         }
 
         /// <summary>부드러운 시작과 끝을 가진 짧은 합성음을 만든다.</summary>

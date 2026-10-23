@@ -13,7 +13,7 @@ namespace MidnightMouse.Tests
         {
             var nights = Resources.LoadAll<NightDefinition>("Campaign/Nights");
             System.Array.Sort(nights, (a, b) => a.Order.CompareTo(b.Order));
-            Assert.That(nights.Length, Is.EqualTo(3));
+            Assert.That(nights.Length, Is.EqualTo(4));
             Assert.That(nights[0].Id, Is.Not.EqualTo(nights[1].Id));
             Assert.That(nights[0].Duration, Is.EqualTo(225));
             Assert.That(nights[1].Duration, Is.EqualTo(300));
@@ -22,6 +22,12 @@ namespace MidnightMouse.Tests
             Assert.That(nights[1].Count(nights[1].Cats[0].kind, 240), Is.EqualTo(4));
             Assert.That(nights[0].StageLine(999), Is.EqualTo(nights[0].StageLine(180)));
             Assert.That(nights[2].LullabyRequest, Is.True);
+            Assert.That(nights[3].Ball, Is.True);
+            Assert.That(nights[3].BallWakeRequest, Is.True);
+            Assert.That(nights[3].BallWakeWindow, Is.EqualTo(10f));
+            Assert.That(nights[3].Count(nights[3].Cats[0].kind, 240), Is.EqualTo(4));
+            Assert.That(nights[3].Count(nights[3].Cats[1].kind, 240), Is.EqualTo(2));
+            for (int i = 0; i < 3; i++) Assert.That(nights[i].Ball, Is.False);
             Assert.That(nights[2].Cats[1].kind.Kind, Is.EqualTo(CatKind.Lazy));
             Assert.That(nights[2].Count(nights[2].Cats[1].kind, 0), Is.EqualTo(2));
             Assert.That(nights[2].Count(nights[2].Cats[1].kind, 240), Is.EqualTo(2));
@@ -49,6 +55,11 @@ namespace MidnightMouse.Tests
         [TestCase("_walkWakeSeconds", float.NaN)]
         [TestCase("_runWakeSeconds", -1f)]
         [TestCase("_runWakeSeconds", float.PositiveInfinity)]
+        [TestCase("_sleepRecoverySeconds", 0f)]
+        [TestCase("_sleepRecoverySeconds", float.NaN)]
+        [TestCase("_sleepRecoverySeconds", float.PositiveInfinity)]
+        [TestCase("_sleepRecoverySeconds", 3f)]
+        [TestCase("_sleepRecoverySeconds", 1.5f)]
         public void InvalidWakeDurationsAreRejected(string field, float value)
         {
             var copy = Object.Instantiate(Resources.Load<CatDefinition>("Campaign/LazyCat"));

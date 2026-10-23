@@ -75,3 +75,9 @@ MonoBehaviour:
   _minimumNoise: 0.6
   _dashUpgrade: 0.7
   _minimumDashCooldown: 1
+  _ballRadius: 0.18
+  _ballSpeed: 3
+  _ballDistance: 6
+  _ballRollRadius: 4
+  _ballNoiseInterval: 0.25
+  _ballStopRadius: 9
