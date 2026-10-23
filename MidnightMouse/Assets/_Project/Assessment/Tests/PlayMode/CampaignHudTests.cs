@@ -129,6 +129,151 @@ namespace MidnightMouse.Tests
         /// <summary>활성 화면의 버튼 동작을 호출한다.</summary>
         private static void Click(string name) => GameObject.Find(name).GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
 
+        /// <summary>텍스트의 실제 줄바꿈 결과가 할당한 영역 안에 들어오는지 확인한다.</summary>
+        private static void AssertTextFits(string name)
+        {
+            var label = GameObject.Find(name).GetComponent<TMP_Text>();
+            label.ForceMeshUpdate();
+            Assert.That(label.preferredHeight, Is.LessThanOrEqualTo(label.rectTransform.rect.height + 1f), name);
+            Assert.That(label.textBounds.size.x, Is.LessThanOrEqualTo(label.rectTransform.rect.width + 1f), name);
+        }
+
+        /// <summary>준비 중에는 종류를 미리 공개하지 않고 시작 뒤에만 도움말과 저장을 갱신한다.</summary>
+        [UnityTest]
+        public IEnumerator EncounterHelpWaitsForStartPersistsAndClosesBackToPause()
+        {
+            Click("HelpButton");
+            Assert.That(GameObject.Find("CatHelp").GetComponent<TMP_Text>().text, Does.Not.Contain("게으름냥"));
+            Click("CloseHelpButton");
+            for (int i = 0; i < 2; i++) _game.Progress.RecordResult(_game.Nights[i].Id, true, false, 0, 200f);
+            Assert.That(_game.BeginNight(2), Is.True);
+            Assert.That(_game.Progress.HasEncountered(CatKind.Lazy), Is.False);
+            _game.ConfirmStart();
+            yield return new WaitForSecondsRealtime(.15f);
+            yield return Press(Key.Escape);
+            yield return new WaitForSecondsRealtime(.15f);
+            Click("PauseHelpButton");
+            string help = GameObject.Find("CatHelp").GetComponent<TMP_Text>().text;
+            Assert.That(help, Does.Contain("호기심냥").And.Contain("게으름냥").And.Not.Contain("사냥꾼냥"));
+            var loaded = new CampaignStore(_path).Load();
+            Assert.That(loaded.HasEncountered(CatKind.Curious) && loaded.HasEncountered(CatKind.Lazy), Is.True);
+            Assert.That(loaded.HasEncountered(CatKind.Hunter), Is.False);
+            AssertTextFits("HelpBody");
+            AssertTextFits("CatHelp");
+            yield return Press(Key.Escape);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Paused));
+            Assert.That(GameObject.Find("HelpScreen"), Is.Null);
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject.name, Is.EqualTo("PauseHelpButton"));
+            // 이미 알려진 세 종류를 표시해도 좁은 화면에 맞춘 고정 영역을 넘지 않는다.
+            _game.Progress.RecordEncounter(CatKind.Hunter);
+            Click("PauseHelpButton");
+            AssertTextFits("CatHelp");
+        }
+
+        /// <summary>마지막 실제 고양이 접촉을 기록하고 종료 후 피격·재시작·승리와 섞지 않는다.</summary>
+        [UnityTest]
+        public IEnumerator FatalCatContactShowsAdviceAndRestartClearsIt()
+        {
+            _game.enabled = false;
+            for (int i = 0; i < 2; i++) _game.Progress.RecordResult(_game.Nights[i].Id, true, false, 0, 200f);
+            Assert.That(_game.BeginNight(2), Is.True);
+            _game.ConfirmStart();
+            var session = (GameSession)typeof(GameController).GetField("_session", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_game);
+            while (_game.Hearts > 1)
+            {
+                Assert.That(_game.TryDamagePlayer(Vector3.zero), Is.True);
+                Assert.That(_game.TryDamagePlayer(Vector3.zero), Is.False);
+                Assert.That(_game.DefeatCause, Is.Empty);
+                session.Tick(_game.Rules.Invulnerability + .01f);
+            }
+            CatController lazy = null;
+            foreach (var cat in _game.Cats)
+                if (cat.IsAvailable && cat.Definition.Kind == CatKind.Lazy) { lazy = cat; break; }
+            Assert.That(lazy, Is.Not.Null);
+            lazy.ReceiveNoise(lazy.transform.position + Vector3.right * 2f, 40f, NoiseKind.Loud, false);
+            Assert.That(lazy.State, Is.EqualTo(CatState.WakeRush));
+            var controller = _game.Player.GetComponent<CharacterController>();
+            controller.enabled = false;
+            _game.Player.transform.position = lazy.transform.position;
+            controller.enabled = true;
+            lazy.Tick(.01f);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Lost));
+            Assert.That(_game.DefeatCause, Does.Contain("게으름냥").And.Contain("기상 질주"));
+            string cause = _game.DefeatCause;
+            Assert.That(_game.TryDamagePlayer(Vector3.zero), Is.False);
+            Assert.That(_game.DefeatCause, Is.EqualTo(cause));
+            yield return new WaitForSecondsRealtime(.15f);
+            Assert.That(GameObject.Find("DefeatAdvice").GetComponent<TMP_Text>().text, Does.Contain(cause));
+            AssertTextFits("DefeatAdvice");
+            Click("RetryButton");
+            Assert.That(_game.DefeatCause, Is.Empty);
+            _game.ConfirmStart();
+            yield return new WaitForSecondsRealtime(.15f);
+            session.AdvanceClock(_game.Duration);
+            _game.enabled = true;
+            yield return new WaitForSecondsRealtime(.15f);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Won));
+            Assert.That(GameObject.Find("DefeatAdvice"), Is.Null);
+        }
+
+        /// <summary>준비 시간을 오래 보내도 시작 후 배너가 보이고 표시 중 게임 시계가 흐른다.</summary>
+        [UnityTest]
+        public IEnumerator IntroductionGetsFullDurationAfterReadyWait()
+        {
+            var hud = Object.FindFirstObjectByType<GameHud>();
+            typeof(GameHud).GetField("_nightBannerSeconds", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(hud, .6f);
+            Assert.That(_game.BeginNight(0), Is.True);
+            yield return new WaitForSecondsRealtime(.8f);
+            Assert.That(_game.Elapsed, Is.Zero);
+            Assert.That(GameObject.Find("NightIntroduction"), Is.Not.Null);
+            _game.ConfirmStart();
+            yield return new WaitForSecondsRealtime(.25f);
+            Assert.That(GameObject.Find("NightIntroduction"), Is.Not.Null);
+            Assert.That(_game.RealElapsed, Is.GreaterThan(0f));
+            yield return new WaitForSecondsRealtime(.6f);
+            Assert.That(GameObject.Find("NightIntroduction"), Is.Null);
+        }
+
+        /// <summary>4일째는 생존 기록으로 해금되고 실제 메뉴 제출로 시작하며 미구현 밤만 준비 중이다.</summary>
+        [UnityTest]
+        public IEnumerator FourthNightUnlocksAndStartsThroughMenu()
+        {
+            yield return Press(Key.Enter);
+            var fourth = GameObject.Find("NightButton4").GetComponent<UnityEngine.UI.Button>();
+            Assert.That(fourth.interactable, Is.False);
+            Assert.That(fourth.GetComponentInChildren<TMP_Text>().text, Is.EqualTo("앞선 밤 생존 후 열림"));
+            Assert.That(GameObject.Find("NightCard4").GetComponentsInChildren<TMP_Text>()[0].text, Does.Contain("장난감 공"));
+            Click("NightButton4");
+            yield return null;
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Title));
+            for (int i = 5; i <= 7; i++)
+            {
+                var later = GameObject.Find("NightButton" + i).GetComponent<UnityEngine.UI.Button>();
+                Assert.That(later.interactable, Is.False);
+                Assert.That(later.GetComponentInChildren<TMP_Text>().text, Is.EqualTo("준비 중"));
+            }
+            for (int i = 0; i < 3; i++) _game.Progress.RecordResult(_game.Nights[i].Id, true, false, 0, 200f);
+            yield return Press(Key.Escape);
+            yield return Press(Key.Enter);
+            Assert.That(fourth.interactable, Is.True);
+            Assert.That(fourth.GetComponentInChildren<TMP_Text>().text, Is.EqualTo("이 밤 시작하기"));
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(fourth.gameObject);
+            yield return Press(Key.Enter);
+            yield return new WaitForSecondsRealtime(.15f);
+            Assert.That(_game.CurrentNight.Order, Is.EqualTo(4));
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Ready));
+            Assert.That(_game.Elapsed, Is.Zero);
+            Assert.That(_game.Ball.gameObject.activeSelf, Is.True);
+            string request = GameObject.Find("RequestProgress").GetComponent<TMP_Text>().text;
+            Assert.That(request, Does.Contain("깨워서 한 방"));
+            Assert.That(request, Does.Contain("공으로 깨운 뒤 10초 안에 타격"));
+            yield return Press(Key.Enter);
+            Assert.That(_game.Phase, Is.EqualTo(GamePhase.Playing));
+            _game.RecordBallWakeHit();
+            yield return new WaitForSecondsRealtime(.15f);
+            Assert.That(GameObject.Find("RequestProgress").GetComponent<TMP_Text>().text, Does.Contain("완료"));
+        }
+
         /// <summary>7개 밤의 잠금과 인트로 세 장의 시간 정지·한 번 표시를 확인한다.</summary>
         [UnityTest]
         public IEnumerator IntroHasThreePagesWithoutClockAndDoesNotRepeat()

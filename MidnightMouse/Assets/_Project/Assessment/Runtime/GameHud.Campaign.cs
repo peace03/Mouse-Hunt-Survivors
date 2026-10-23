@@ -90,7 +90,7 @@ namespace MidnightMouse
                     if (_game.Nights[index].Order == slot + 1) { _nightIndices[slot] = index; break; }
                 int selected = _nightIndices[slot];
                 var night = selected >= 0 ? _game.Nights[selected] : null;
-                bool available = night != null && night.Order <= 3;
+                bool available = night != null;
                 bool unlocked = available && _game.IsNightUnlocked(selected);
                 _nightButtons[slot].interactable = unlocked;
                 _nightButtons[slot].GetComponentInChildren<TMP_Text>().text = !available ? "준비 중" : unlocked ? "이 밤 시작하기" : "앞선 밤 생존 후 열림";
@@ -212,8 +212,10 @@ namespace MidnightMouse
             if (night != null && _shownRequestHits != _game.Events.RequestBestHits)
             {
                 _shownRequestHits = _game.Events.RequestBestHits;
+                string condition = night.BallWakeRequest ? $"공으로 깨운 뒤 {night.BallWakeWindow:0.#}초 안에 타격"
+                    : night.LullabyRequest ? "미끼로 재운 뒤 타격" : "한 번에 맞힌 고양이";
                 _requestText.text = $"부탁 · {night.RequestName}  {(_game.Events.RequestCompleted ? "완료 ✓" : "0 / 1")}\n"
-                    + $"{(night.LullabyRequest ? "미끼로 재운 뒤 타격" : "한 번에 맞힌 고양이")}  {Mathf.Min(_shownRequestHits, night.RequestHits)} / {night.RequestHits}";
+                    + $"{condition}  {Mathf.Min(_shownRequestHits, night.RequestHits)} / {night.RequestHits}";
                 _requestText.color = _game.Events.RequestCompleted ? _gold : _cream;
             }
             _firstGuideText.text = Time.unscaledTime < _game.GuideUntil ? _game.FirstGuide : "";

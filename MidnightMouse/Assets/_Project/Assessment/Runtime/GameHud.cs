@@ -24,7 +24,7 @@ namespace MidnightMouse
         private RectTransform _canvas;
         private GameObject _title, _hud, _pause, _upgrade, _result, _help, _settings, _quit;
         private TMP_Text _hearts, _clock, _phaseLabel, _score, _level, _hint, _cooldowns, _dawnBonus, _debugNotice;
-        private TMP_Text _resultTitle, _resultBody;
+        private TMP_Text _resultTitle, _resultBody, _defeatAdvice, _catHelp;
         private UnityEngine.UI.Image _experience, _dawn;
         private readonly TMP_Text[] _upgradeTitles = new TMP_Text[3];
         private readonly TMP_Text[] _upgradeBodies = new TMP_Text[3];
@@ -169,6 +169,8 @@ namespace MidnightMouse
             bool won = phase == GamePhase.Won;
             _resultTitle.text = won ? "아침이 왔어요." : "오늘 밤은 여기까지.";
             _resultTitle.color = won ? _gold : _cream;
+            _defeatAdvice.gameObject.SetActive(!won && !string.IsNullOrEmpty(_game.DefeatCause));
+            _defeatAdvice.text = won ? "" : $"{_game.DefeatCause}\n{_game.DefeatTip}";
             _resultBody.text = (won ? "모찌가 무사히 밤을 넘겼습니다.\n" : "모찌가 쥐구멍으로 몸을 숨겼습니다.\n")
                 + $"\n생존  {Mathf.FloorToInt(_game.RealElapsed / 60f):00}:{Mathf.FloorToInt(_game.RealElapsed % 60f):00}"
                 + $"     치즈  {_game.CheeseCollected}\n쫓아낸 고양이  {_game.CatsBanished}     도달 레벨  {_game.Level}";
@@ -245,7 +247,7 @@ namespace MidnightMouse
             Label(card, "Goal", 42, 438, 510, 72,
                 "목표  ·  아침 6시까지 살아남기\n고양이를 쫓아낼수록 아침이 빨리 와요.", 21, _cream);
             _startButton = Button(card, "StartButton", 42, 544, 508, 67, "밤 고르기    ENTER", StartFromTitle, true, 24);
-            Button(card, "HelpButton", 42, 627, 508, 44, "조작과 생존 요령", () => OpenOverlay(_help, "HelpButton"), false, 20);
+            Button(card, "HelpButton", 42, 627, 508, 44, "조작과 생존 요령", () => OpenHelp("HelpButton"), false, 20);
             Button(card, "TitleSettingsButton", 42, 685, 246, 44, "설정", () => OpenSettings("TitleSettingsButton"), false, 20);
             Button(card, "TitleQuitButton", 304, 685, 246, 44, "게임 종료", () => OpenQuit("TitleQuitButton"), false, 20);
             Label(card, "Credit", 42, 755, 510, 22, "윤평화  ·  Unity 프로토타입", 14, _muted);
@@ -255,13 +257,14 @@ namespace MidnightMouse
         private void BuildPause()
         {
             _pause = Layer("PauseScreen", true);
-            var card = CenterPanel(_pause.transform, "PauseCard", 0, 0, 610, 570, _ink);
+            var card = CenterPanel(_pause.transform, "PauseCard", 0, 0, 610, 640, _ink);
             Label(card, "PauseTitle", 36, 40, 538, 70, "잠깐 숨 고르기", 40, _cream, TextAlignmentOptions.Center);
             Label(card, "PauseBody", 36, 129, 538, 48, "집도, 고양이도 잠시 멈췄어요.", 23, _muted, TextAlignmentOptions.Center);
             _continueButton = Button(card, "ContinueButton", 60, 222, 490, 62, "다시 움직이기    ESC", _game.TogglePause, true, 23);
-            Button(card, "PauseSettingsButton", 60, 307, 490, 52, "설정", () => OpenSettings("PauseSettingsButton"), false, 21);
-            Button(card, "TitleButton", 60, 377, 490, 52, "제목으로", _game.ReturnToTitle, false, 21);
-            Button(card, "PauseQuitButton", 60, 447, 490, 52, "게임 종료", () => OpenQuit("PauseQuitButton"), false, 21);
+            Button(card, "PauseHelpButton", 60, 307, 490, 52, "조작과 생존 요령", () => OpenHelp("PauseHelpButton"), false, 21);
+            Button(card, "PauseSettingsButton", 60, 377, 490, 52, "설정", () => OpenSettings("PauseSettingsButton"), false, 21);
+            Button(card, "TitleButton", 60, 447, 490, 52, "제목으로", _game.ReturnToTitle, false, 21);
+            Button(card, "PauseQuitButton", 60, 517, 490, 52, "게임 종료", () => OpenQuit("PauseQuitButton"), false, 21);
         }
 
         /// <summary>세 개의 성장 카드를 만들고 오입력 방지 시간을 적용한다.</summary>
@@ -288,27 +291,41 @@ namespace MidnightMouse
         private void BuildResult()
         {
             _result = Layer("ResultScreen", true);
-            var card = CenterPanel(_result.transform, "ResultCard", 0, 0, 730, 660, _ink);
+            var card = CenterPanel(_result.transform, "ResultCard", 0, 0, 730, 760, _ink);
             Label(card, "ResultCaption", 42, 36, 646, 28, "모찌의 밤 나들이 기록", 20, _muted, TextAlignmentOptions.Center);
             _resultTitle = Label(card, "ResultTitle", 34, 101, 662, 75, "", 44, _gold, TextAlignmentOptions.Center);
             _resultBody = Label(card, "ResultBody", 42, 190, 646, 125, "", 21, _cream, TextAlignmentOptions.Center);
             _campaignResult = Label(card, "CampaignResult", 42, 330, 646, 105, "", 21, _gold, TextAlignmentOptions.Center);
-            _retryButton = Button(card, "RetryButton", 80, 460, 570, 52, "같은 밤 다시 하기", RetryCampaign, true, 24);
-            Button(card, "ChooseNightButton", 80, 530, 570, 45, "밤 고르기", ReturnToNightSelection, false, 20);
-            Button(card, "ReturnTitleButton", 80, 590, 570, 40, "제목으로", _game.ReturnToTitle, false, 20);
+            _defeatAdvice = Label(card, "DefeatAdvice", 42, 442, 646, 95, "", 21, _cream, TextAlignmentOptions.Center);
+            _retryButton = Button(card, "RetryButton", 80, 560, 570, 52, "같은 밤 다시 하기", RetryCampaign, true, 24);
+            Button(card, "ChooseNightButton", 80, 630, 570, 45, "밤 고르기", ReturnToNightSelection, false, 20);
+            Button(card, "ReturnTitleButton", 80, 690, 570, 40, "제목으로", _game.ReturnToTitle, false, 20);
         }
 
         /// <summary>게임 규칙과 조작을 읽을 수 있는 도움말을 만든다.</summary>
         private void BuildHelp()
         {
             _help = Layer("HelpScreen", true);
-            var card = CenterPanel(_help.transform, "HelpCard", 0, 0, 880, 690, _ink);
-            Label(card, "HelpTitle", 45, 35, 790, 60, "작은 쥐의 생존 요령", 38, _cream);
-            Label(card, "HelpBody", 45, 127, 790, 430,
+            var card = CenterPanel(_help.transform, "HelpCard", 0, 0, 1280, 790, _ink);
+            Label(card, "HelpTitle", 45, 35, 1190, 60, "작은 쥐의 생존 요령", 38, _cream);
+            Label(card, "HelpBody", 45, 127, 510, 550,
                 "01   움직임이 소리가 됩니다\nWASD 이동 · Ctrl 조용히 · Shift 빠르게 · Space 대시\n대시는 출발점에 소리 잔상을 남기고 잠시 조용해져요.\n\n"
-                + "02   고양이를 원하는 자리로\n클릭: 미끼 던지기. 먹는 고양이에게도 잡혀요.\n스위치에서 E: 0.5초 동안 멈추세요. 움직이면 취소돼요.\n\n"
-                + "03   치즈를 모으며 아침을 당겨요\n치즈로 레벨을 올리고 성장 카드 한 장을 고르세요.\n고양이를 쫓아내면 아침이 빨라져요. Esc로 잠시 멈춥니다.", 23, _cream);
-            Button(card, "CloseHelpButton", 45, 588, 790, 58, "알겠어요", CloseOverlay, true, 23);
+                + "02   고양이를 원하는 자리로\n클릭: 미끼 던지기. 먹는 고양이에게도 잡혀요.\n스위치에서 E: 0.5초 동안 멈추세요. 움직이면 취소돼요.\n가까운 공에서 E: 커서 쪽으로 차요. 멈춘 자리에서 다시 차세요.\n\n"
+                + "03   치즈를 모으며 아침을 당겨요\n치즈로 레벨을 올리고 성장 카드 한 장을 고르세요.\n고양이를 쫓아내면 아침이 빨라져요. Esc로 잠시 멈춥니다.", 20, _cream);
+            Label(card, "CatHelpTitle", 585, 127, 650, 35, "만난 고양이", 25, _gold);
+            _catHelp = Label(card, "CatHelp", 585, 170, 650, 520, "", 20, _cream);
+            Button(card, "CloseHelpButton", 45, 700, 1190, 58, "알겠어요    ESC", CloseOverlay, true, 23);
+        }
+
+        /// <summary>도움말을 열 때 저장된 종류만 모아 보여 주고 원래 메뉴로 돌아갈 위치를 유지한다.</summary>
+        private void OpenHelp(string sourceButton)
+        {
+            if (!OpenOverlay(_help, sourceButton)) return;
+            _catHelp.text = "";
+            foreach (CatKind kind in System.Enum.GetValues(typeof(CatKind)))
+                if (_game.Progress.HasEncountered(kind))
+                    _catHelp.text += (string.IsNullOrEmpty(_catHelp.text) ? "" : "\n\n") + CatLearning.Summary(kind);
+            if (string.IsNullOrEmpty(_catHelp.text)) _catHelp.text = "밤을 시작하면 만난 고양이의 생존 요령이 여기에 남아요.";
         }
 
         /// <summary>음량 슬라이더와 두 화면 모드를 기존 메뉴 스타일로 배치한다.</summary>

@@ -44,6 +44,27 @@ namespace MidnightMouse.Tests
             StringAssert.DoesNotContain("stars", File.ReadAllText(_path));
         }
 
+        /// <summary>종류 기록이 없는 v1 저장도 읽고 실제 만난 종류만 추가해 다시 읽는다.</summary>
+        [Test]
+        public void OldSaveKeepsRecordsAndPersistsOnlyEncounteredCats()
+        {
+            File.WriteAllText(_path, "{\"version\":1,\"introSeen\":true,\"tutorialSeen\":5,\"nights\":[{\"nightId\":\"night-1\",\"survived\":true,\"bestSeconds\":200,\"mostBanished\":3}]}");
+            var store = new CampaignStore(_path);
+            var progress = store.Load();
+            Assert.That(store.Error, Is.Null);
+            Assert.That(progress.HasEncountered(CatKind.Curious), Is.False);
+            Assert.That(progress.RecordEncounter(CatKind.Lazy), Is.True);
+            Assert.That(progress.RecordEncounter(CatKind.Lazy), Is.False);
+            Assert.Throws<ArgumentOutOfRangeException>(() => progress.RecordEncounter((CatKind)32));
+            Assert.That(store.Save(progress), Is.True, store.Error);
+            var loaded = new CampaignStore(_path).Load();
+            Assert.That(loaded.HasEncountered(CatKind.Lazy), Is.True);
+            Assert.That(loaded.HasEncountered(CatKind.Curious), Is.False);
+            Assert.That(loaded.HasEncountered(CatKind.Hunter), Is.False);
+            Assert.That(loaded.introSeen && loaded.tutorialSeen == 5, Is.True);
+            Assert.That(loaded.Find("night-1").mostBanished, Is.EqualTo(3));
+        }
+
         /// <summary>반복 저장은 원본을 교체하고 바로 이전 정상 파일 한 개만 보관한다.</summary>
         [Test]
         public void AtomicReplacementRetainsOnePreviousBackupAndNoTemporaryFiles()
@@ -70,6 +91,8 @@ namespace MidnightMouse.Tests
         [TestCase("{\"version\":2,\"nights\":[]}")]
         [TestCase("{\"version\":1}")]
         [TestCase("{\"version\":1,\"tutorialSeen\":-1,\"nights\":[]}")]
+        [TestCase("{\"version\":1,\"encounteredCats\":-1,\"nights\":[]}")]
+        [TestCase("{\"version\":1,\"encounteredCats\":8,\"nights\":[]}")]
         [TestCase("{\"version\":1,\"nights\":[null]}")]
         [TestCase("{\"version\":1,\"nights\":[{\"nightId\":\"a\",\"survived\":true,\"bestSeconds\":-1}]}")]
         [TestCase("{\"version\":1,\"nights\":[{\"nightId\":\"a\",\"survived\":true,\"bestSeconds\":1,\"mostBanished\":-1}]}")]

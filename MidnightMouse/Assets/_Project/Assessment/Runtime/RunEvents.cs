@@ -12,8 +12,16 @@ namespace MidnightMouse
         /// <summary>함정이 보장하는 작동별 고유 타격 수를 부탁 조건과 비교한다.</summary>
         public void TrapHit(TrapKind kind, int uniqueHits, NightDefinition night)
         {
-            if (night == null || night.LullabyRequest || kind != night.RequestTrap) return;
+            if (night == null || night.LullabyRequest || night.BallWakeRequest || kind != night.RequestTrap) return;
             RequestBestHits = System.Math.Max(RequestBestHits, uniqueHits);
+            RequestCompleted |= RequestBestHits >= night.RequestHits;
+        }
+
+        /// <summary>공으로 깨어난 뒤 시간 안의 첫 함정 타격을 부탁에 반영한다.</summary>
+        public void BallWakeHit(NightDefinition night)
+        {
+            if (night == null || !night.BallWakeRequest) return;
+            RequestBestHits++;
             RequestCompleted |= RequestBestHits >= night.RequestHits;
         }
 
